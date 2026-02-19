@@ -1,72 +1,43 @@
-# database.py
-
-import http
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 # -------------------------
 # Google Sheets Setup
 # -------------------------
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-creds = Credentials.from_service_account_file(
-    "credentials.json",
-    scopes=SCOPES
-)
-
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
 client = gspread.authorize(creds)
 
-# Replace with your exact spreadsheet name
-SPREADSHEET_NAME = "Blume Inventory"
+SPREADSHEET_NAME = "test spreadsheet"
+spreadsheet = client.open(SPREADSHEET_NAME)
 
-sheet = client.open("test spreadsheet").worksheet("Sheet1")
-
-
-# -------------------------
-# Add Device
-# -------------------------
+# Worksheets
+inventory_sheet = spreadsheet.get_worksheet(0) # Sheet1: Main Inventory
+error_sheet = spreadsheet.get_worksheet(1)     # Sheet2: Error Reporting
 
 def add_device(blume_id, item, serial, service_date, status):
-    if not all([blume_id, item, serial, service_date, status]):
-        raise ValueError("All fields are required.")
+    """Adds a new device to Sheet1."""
+    existing_ids = inventory_sheet.col_values(1)
+    if blume_id in existing_ids:
+        raise ValueError(f"Blume ID '{blume_id}' already exists.")
+    
+    inventory_sheet.append_row([blume_id, item, serial, service_date, status])
 
-    # Check if Blume ID already exists
-    records = sheet.get_all_records()
-    for row in records:
-        if row["Blume ID"] == blume_id:
-            raise ValueError("Blume ID already exists.")
+def report_error(blume_id, status, notes):
+    """
+    Logs an error/status change to Sheet2.
+    Headings: Blume ID, Date, Current Status, Notes
+    """
+    # Verification: Ensure device exists in main inventory before reporting error
+    existing_ids = inventory_sheet.col_values(1)
+    if blume_id not in existing_ids:
+        raise ValueError(f"ID '{blume_id}' not found in main inventory.")
 
-    sheet.append_row([
-        blume_id,
-        item,
-        serial,
-        service_date,
-        status
+    # Append to Sheet2
+    error_sheet.append_row([
+        blume_id, 
+        datetime.today().strftime("%Y-%m-%d"), # Date
+        status,                               # Current Status
+        notes                                 # Notes
     ])
-
-
-# -------------------------
-# Update Status
-# -------------------------
-
-def update_status(blume_id, new_status):
-    cell = sheet.find(blume_id)
-
-    if not cell:
-        raise ValueError("Device not found.")
-
-    status_column = 5  # Current Status column
-    sheet.update_cell(cell.row, status_column, new_status)
-
-
-# -------------------------
-# Add Service Note (Optional future expansion placeholder)
-# -------------------------
-
-def add_service_note(blume_id, note):
-    # You can expand this later to use a Service_Logs worksheet
-    raise NotImplementedError("Service log feature not implemented yet.")
