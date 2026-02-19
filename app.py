@@ -6,126 +6,157 @@ import database
 
 # --- Styling ---
 BG_COLOR = "#0F0F0F"
-SIDEBAR_COLOR = "#161616"
-CARD_COLOR = "#1E1E1E"
+SIDEBAR_COLOR = "#141414"
+CARD_COLOR = "#1A1A1A"
 ACCENT_BLUE = "#3D5AFE"
-BORDER_COLOR = "#333333"
+BORDER_COLOR = "#2B2B2B"
+SUCCESS_GREEN = "#2ECC71"
+ERROR_RED = "#E74C3C"
 
 class InventoryApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("BLUME | Management System")
-        self.geometry("1000x750")
+        self.title("BLUME | Inventory v2.1")
+        self.geometry("1100x850")
+        self.configure(fg_color=BG_COLOR)
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        self._build_sidebar()
-        self._build_main_content()
+        self._setup_sidebar()
+        self._setup_main_area()
 
-    def _build_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0, fg_color=SIDEBAR_COLOR)
+    def _setup_sidebar(self):
+        self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=SIDEBAR_COLOR)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
-        
+        self.sidebar.grid_propagate(False)
+
         ctk.CTkLabel(self.sidebar, text="BLUME", font=("Arial", 28, "bold"), text_color=ACCENT_BLUE).pack(pady=40)
+        ctk.CTkButton(self.sidebar, text="Operations", fg_color=ACCENT_BLUE, height=40).pack(pady=10, padx=20, fill="x")
+
+    def _setup_main_area(self):
+        self.main_area = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_area.grid(row=0, column=1, sticky="nsew")
+        self.main_area.grid_columnconfigure(0, weight=1)
+        self.main_area.grid_rowconfigure(1, weight=1)
+
+        # Header
+        ctk.CTkLabel(self.main_area, text="Inventory Dashboard", font=("Arial", 24, "bold")).grid(row=0, column=0, pady=(30, 10), padx=40, sticky="w")
+
+        # Tabview (The Glass Card)
+        self.tabs = ctk.CTkTabview(self.main_area, fg_color=CARD_COLOR, segmented_button_selected_color=ACCENT_BLUE, border_width=1, border_color=BORDER_COLOR)
+        self.tabs.grid(row=1, column=0, padx=40, pady=10, sticky="nsew")
         
-        # Navigation
-        ctk.CTkButton(self.sidebar, text="Operations", fg_color=ACCENT_BLUE).pack(pady=10, padx=20, fill="x")
-        self.status_text = ctk.CTkLabel(self.sidebar, text="Sheet2 Linked", text_color="gray70")
-        self.status_text.pack(side="bottom", pady=20)
-
-    def _build_main_content(self):
-        self.main_container = ctk.CTkFrame(self, fg_color=BG_COLOR, corner_radius=0)
-        self.main_container.grid(row=0, column=1, sticky="nsew")
-
-        # Tabview for Modern Navigation
-        self.tabs = ctk.CTkTabview(
-            self.main_container, 
-            fg_color=CARD_COLOR, 
-            segmented_button_selected_color=ACCENT_BLUE,
-            border_width=1,
-            border_color=BORDER_COLOR,
-            corner_radius=20
-        )
-        self.tabs.pack(pady=40, padx=40, fill="both", expand=True)
-
         self.tab_add = self.tabs.add("New Device")
-        self.tab_error = self.tabs.add("Report Error / Issue")
+        self.tab_error = self.tabs.add("Report Error")
 
-        self._setup_add_device_tab()
-        self._setup_error_report_tab()
+        # Toast Feedback
+        self.toast_bar = ctk.CTkFrame(self.main_area, height=45, fg_color="transparent", corner_radius=10)
+        self.toast_bar.grid(row=2, column=0, padx=40, pady=(10, 20), sticky="ew")
+        self.toast_label = ctk.CTkLabel(self.toast_bar, text="", font=("Arial", 12, "bold"))
+        self.toast_label.pack(expand=True)
 
-    # --- TAB 1: NEW DEVICE (SHEET 1) ---
-    def _setup_add_device_tab(self):
-        parent = self.tab_add
-        self.bid_entry = self._create_input(parent, "Blume ID", "B-XXXX")
+        self._setup_inventory_tab()
+        self._setup_error_tab()
+
+    # --- TAB: NEW DEVICE (Sheet 1) ---
+    def _setup_inventory_tab(self):
+        frame = ctk.CTkFrame(self.tab_add, fg_color="transparent")
+        frame.pack(expand=True)
+
+        self.bid_entry = self._create_field(frame, "Blume ID", "B-XXXX")
         
-        ctk.CTkLabel(parent, text="Item Type", font=("Arial", 12, "bold")).pack(pady=(10,0))
-        self.item_menu = ctk.CTkOptionMenu(parent, values=["VR Headset", "Battery", "Remote L", "Remote R"], width=350)
+        ctk.CTkLabel(frame, text="Item Type", font=("Arial", 12, "bold")).pack(pady=(15, 0))
+        self.item_menu = ctk.CTkOptionMenu(frame, values=["VR Headset", "Battery", "Remote L", "Remote R"], width=350)
         self.item_menu.pack(pady=5)
-        
-        self.sn_entry = self._create_input(parent, "Serial Number", "SN-XXXX")
-        self.date_entry = self._create_input(parent, "Service Date", "YYYY-MM-DD")
+
+        self.sn_entry = self._create_field(frame, "Serial Number", "SN-XXXX")
+        self.sn_entry.bind("<KeyRelease>", self._mask_serial)
+
+        self.date_entry = self._create_field(frame, "Service Date", "YYYY-MM-DD")
         self.date_entry.insert(0, datetime.today().strftime("%Y-%m-%d"))
 
-        ctk.CTkButton(parent, text="REGISTER TO SHEET 1", fg_color=ACCENT_BLUE, height=45, width=220, 
-                      command=self._handle_add).pack(pady=30)
+        self.add_btn = ctk.CTkButton(frame, text="ADD TO SYSTEM", fg_color=ACCENT_BLUE, height=45, width=250, command=self._handle_add)
+        self.add_btn.pack(pady=30)
 
-    # --- TAB 2: ERROR REPORTING (SHEET 2) ---
-    def _setup_error_report_tab(self):
-        parent = self.tab_error
-        self.err_bid = self._create_input(parent, "Blume ID", "ID of the faulty device")
+    # --- TAB: REPORT ERROR (Sheet 2) ---
+    def _setup_error_tab(self):
+        frame = ctk.CTkFrame(self.tab_error, fg_color="transparent")
+        frame.pack(expand=True)
+
+        self.err_bid = self._create_field(frame, "Device Blume ID", "ID of the faulty device")
         
-        ctk.CTkLabel(parent, text="New Current Status", font=("Arial", 12, "bold")).pack(pady=(10,0))
-        self.err_status = ctk.CTkOptionMenu(parent, values=["In Repair", "Damaged", "Missing", "Needs Service"], width=350, fg_color="#E74C3C")
+        ctk.CTkLabel(frame, text="Current Status", font=("Arial", 12, "bold")).pack(pady=(15, 0))
+        self.err_status = ctk.CTkOptionMenu(frame, values=["In Repair", "Damaged", "Missing", "Needs Service"], width=350, fg_color=ERROR_RED)
         self.err_status.pack(pady=5)
 
-        ctk.CTkLabel(parent, text="Notes / Error Description", font=("Arial", 12, "bold")).pack(pady=(10,0))
-        self.err_notes = ctk.CTkTextbox(parent, width=400, height=120, fg_color="#121212", border_color=BORDER_COLOR)
+        ctk.CTkLabel(frame, text="Notes / Error Description", font=("Arial", 12, "bold")).pack(pady=(15, 0))
+        self.err_notes = ctk.CTkTextbox(frame, width=350, height=120, fg_color="#121212", border_color=BORDER_COLOR)
         self.err_notes.pack(pady=5)
 
-        ctk.CTkButton(parent, text="LOG TO SHEET 2", fg_color="#E74C3C", hover_color="#C0392B", height=45, width=220, 
-                      command=self._handle_error).pack(pady=30)
+        self.err_btn = ctk.CTkButton(frame, text="LOG ERROR TO SHEET 2", fg_color=ERROR_RED, height=45, width=250, command=self._handle_error)
+        self.err_btn.pack(pady=30)
 
-    # --- Logic Helpers ---
-    def _create_input(self, parent, label, placeholder):
-        ctk.CTkLabel(parent, text=label, font=("Arial", 12, "bold")).pack(pady=(10, 0))
-        entry = ctk.CTkEntry(parent, width=350, placeholder_text=placeholder, fg_color="#121212", border_color=BORDER_COLOR)
+    # --- UI Helpers ---
+    def _create_field(self, parent, label, placeholder):
+        ctk.CTkLabel(parent, text=label, font=("Arial", 12, "bold")).pack(pady=(15, 0))
+        entry = ctk.CTkEntry(parent, width=350, height=35, placeholder_text=placeholder, fg_color="#121212", border_color=BORDER_COLOR)
         entry.pack(pady=5)
         return entry
 
+    def _mask_serial(self, event):
+        if event.keysym in ("BackSpace", "Delete"): return
+        val = self.sn_entry.get().upper().replace("-", "")
+        if len(val) >= 2:
+            self.sn_entry.delete(0, "end")
+            self.sn_entry.insert(0, f"{val[:2]}-{val[2:12]}")
+
+    def trigger_toast(self, message, is_error=False):
+        color = ERROR_RED if is_error else SUCCESS_GREEN
+        self.toast_bar.configure(fg_color=color)
+        self.toast_label.configure(text=message)
+        self.after(3500, lambda: self.toast_bar.configure(fg_color="transparent"))
+        self.after(3500, lambda: self.toast_label.configure(text=""))
+
+    # --- Submission Logic ---
     def _handle_add(self):
         bid, item, sn, date = self.bid_entry.get(), self.item_menu.get(), self.sn_entry.get(), self.date_entry.get()
-        if not bid or not sn:
-            return messagebox.showwarning("Warning", "Please fill Blume ID and Serial.")
+        if not bid or not sn: return self.trigger_toast("Missing Fields!", True)
         
-        threading.Thread(target=self._async_add, args=(bid, item, sn, date), daemon=True).start()
-
-    def _async_add(self, bid, item, sn, date):
-     try:
-        database.add_device(bid, item, sn, date, "Active")
-        self.after(0, lambda: [messagebox.showinfo("Success", "Device Registered!"), self.bid_entry.delete(0, 'end')])
-     except Exception as e:
-        # Note the 'e=e' below. This "locks" the current error into the lambda.
-        self.after(0, lambda e=e: messagebox.showerror("Database Error", str(e)))
+        self.add_btn.configure(state="disabled", text="Syncing...")
+        threading.Thread(target=self._worker, args=("add", bid, item, sn, date), daemon=True).start()
 
     def _handle_error(self):
         bid = self.err_bid.get()
         status = self.err_status.get()
         notes = self.err_notes.get("1.0", "end-1c")
-        
-        if not bid or not notes.strip():
-            return messagebox.showwarning("Warning", "Please provide Blume ID and Notes.")
+        if not bid or not notes.strip(): return self.trigger_toast("Missing Notes/ID!", True)
 
-        threading.Thread(target=self._async_error, args=(bid, status, notes), daemon=True).start()
+        self.err_btn.configure(state="disabled", text="Logging...")
+        threading.Thread(target=self._worker, args=("error", bid, status, notes), daemon=True).start()
 
-    def _async_error(self, bid, status, notes):
-       try:
-        database.report_error(bid, status, notes)
-        self.after(0, lambda: [messagebox.showinfo("Logged", "Sheet 2 Updated!"), self.err_notes.delete("1.0", "end")])
-       except Exception as e:
-        # Bind e to the local scope of the lambda
-        self.after(0, lambda e=e: messagebox.showerror("Database Error", str(e)))
+    def _worker(self, mode, *args):
+        try:
+            if mode == "add":
+                database.add_device(*args, "Active")
+                success_msg = "Device added to Sheet 1"
+            else:
+                database.report_error(*args)
+                success_msg = "Error logged to Sheet 2"
+            
+            self.after(0, lambda: self.trigger_toast(success_msg))
+            self.after(0, self._clear_all)
+        except Exception as e:
+            self.after(0, lambda e=e: self.trigger_toast(f"FAILED: {str(e)}", True))
+        finally:
+            self.after(0, lambda: self.add_btn.configure(state="normal", text="ADD TO SYSTEM"))
+            self.after(0, lambda: self.err_btn.configure(state="normal", text="LOG ERROR TO SHEET 2"))
+
+    def _clear_all(self):
+        self.bid_entry.delete(0, 'end')
+        self.sn_entry.delete(0, 'end')
+        self.err_bid.delete(0, 'end')
+        self.err_notes.delete("1.0", "end")
 
 if __name__ == "__main__":
     app = InventoryApp()
