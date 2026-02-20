@@ -16,13 +16,13 @@ spreadsheet = client.open(SPREADSHEET_NAME)
 inventory_sheet = spreadsheet.get_worksheet(0) # Sheet1: Main Inventory
 error_sheet = spreadsheet.get_worksheet(1)     # Sheet2: Error Reporting
 
-def add_device(blume_id, item, serial, service_date, status):
+def add_device(blume_id, item, serial, originated_date):
     """Adds a new device to Sheet1."""
     existing_ids = inventory_sheet.col_values(1)
     if blume_id in existing_ids:
         raise ValueError(f"Blume ID '{blume_id}' already exists.")
     
-    inventory_sheet.append_row([blume_id, item, serial, service_date, status])
+    inventory_sheet.append_row([blume_id, item, serial, originated_date])
 
 def report_error(blume_id, status, notes):
     """
