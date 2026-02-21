@@ -281,7 +281,7 @@ class InventoryApp(ctk.CTk):
             separator = ctk.CTkFrame(content, height=1, fg_color=G_BORDER)
             separator.pack(fill="x", pady=10)
             
-            note_text = f"Logged on {issue['Date']}: {issue['Notes']}"
+            note_text = f"Logged on {issue['Issue Date']}: {issue['Notes']}"
             ctk.CTkLabel(content, text=note_text, font=("Arial", 13), text_color=G_TEXT, 
                          wraplength=700, justify="left").pack(anchor="w")
 

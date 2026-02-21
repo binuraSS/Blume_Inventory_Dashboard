@@ -64,7 +64,7 @@ def search_device(query_value):
         for e in all_errors:
             if str(e.get('Blume ID')) == bid:
                 item_errors.append({
-                    "Date": e.get('Date', 'N/A'),
+                    "Issue Date": e.get('Issue Date', 'N/A'),
                     "Status": e.get('Status', 'N/A'),
                     "Notes": e.get('Notes', '')
                 })
