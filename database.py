@@ -65,8 +65,8 @@ def search_device(query_value):
             if str(e.get('Blume ID')) == bid:
                 item_errors.append({
                     "Issue Date": e.get('Issue Date', 'N/A'),
-                    "Status": e.get('Status', 'N/A'),
-                    "Notes": e.get('Notes', '')
+                    "Status": e.get('Device Status', 'N/A'),
+                    "Notes": e.get('Issue Notes', '')
                 })
 
         # 3. Determine if this item matches the search query
