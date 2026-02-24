@@ -1,0 +1,11 @@
+.venv/
+venv/
+env/
+bin/
+obj/
+_py
+__pycache__/
+views/__pycache__/
+app.py
+views.py
+credentials.json
