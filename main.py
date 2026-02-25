@@ -43,9 +43,10 @@ class BlumeApp(ctk.CTk):
         self.nav_btns = {}
         menu = [
             ("Add New Device", "AddDeviceView"),
+            ("Search Inventory", "SearchView")
             ("Report Fault", "FaultReportView"),
             ("Repair Center", "RepairView"),
-            ("Search Inventory", "SearchView")
+            
         ]
 
         for text, view_name in menu:

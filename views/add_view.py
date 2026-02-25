@@ -13,7 +13,7 @@ class AddDeviceView(ctk.CTkFrame):
         container.pack(pady=60, expand=True)
 
         self.bid = create_material_input(container, "Blume ID", "B-1234")
-        self.cat = create_material_dropdown(container, "Category", ["VR Headset", "Battery Pack", "Remote L", "Remote R"])
+        self.cat = create_material_dropdown(container, "Category", ["VR Headset (HTC Vive)", "External Battery Pack", "Left Hand Remote", "Right Hand Remote"])
         self.sn = create_material_input(container, "Serial Number", "SN-XXXX")
         self.date = create_material_input(container, "Date", "YYYY-MM-DD")
         self.date.insert(0, datetime.today().strftime("%Y-%m-%d"))
@@ -28,5 +28,6 @@ class AddDeviceView(ctk.CTkFrame):
                 database.add_device(self.bid.get(), self.cat.get(), self.sn.get(), self.date.get())
                 self.after(0, lambda: self.show_msg("Device Added Successfully"))
             except Exception as e:
-                self.after(0, lambda: self.show_msg(f"Error: {str(e)}"))
+              error_text = str(e) # Convert to string immediately
+              self.after(0, lambda msg=error_text: self.show_msg(f"Error: {msg}"))
         threading.Thread(target=task, daemon=True).start()
