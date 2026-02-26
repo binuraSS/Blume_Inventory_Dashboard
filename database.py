@@ -136,3 +136,34 @@ def search_device(query_value):
                 "issues": formatted_faults 
             })
     return results
+def get_device_history(blume_id):
+    """Pulls all events for a device from Active and Archive sheets."""
+    all_events = []
+    
+    # 1. Get Active Faults
+    active = fault_sheet.get_all_records()
+    for row in active:
+        if str(row.get('Blume ID')) == str(blume_id):
+            all_events.append({
+                "date": row.get('Issue Date'),
+                "type": "ACTIVE FAULT",
+                "status": row.get('Device Status'),
+                "notes": row.get('Issue Notes'),
+                "color": "#FF4C4C" # Red
+            })
+
+    # 2. Get Resolved History
+    resolved = repair_sheet.get_all_records()
+    for row in resolved:
+        if str(row.get('Blume ID')) == str(blume_id):
+            all_events.append({
+                "date": row.get('Resolved Date'),
+                "type": "RESOLVED",
+                "status": "Healthy",
+                "notes": f"Tech Note: {row.get('Tech Notes')}",
+                "color": "#2ECC71" # Green
+            })
+
+    # Sort by date (Newest at top)
+    all_events.sort(key=lambda x: x['date'], reverse=True)
+    return all_events
