@@ -136,34 +136,48 @@ def search_device(query_value):
                 "issues": formatted_faults 
             })
     return results
+
 def get_device_history(blume_id):
-    """Pulls all events for a device from Active and Archive sheets."""
-    all_events = []
+    """Combines all records for a Blume ID into a single sorted timeline."""
+    history = []
     
-    # 1. Get Active Faults
-    active = fault_sheet.get_all_records()
-    for row in active:
-        if str(row.get('Blume ID')) == str(blume_id):
-            all_events.append({
-                "date": row.get('Issue Date'),
-                "type": "ACTIVE FAULT",
-                "status": row.get('Device Status'),
-                "notes": row.get('Issue Notes'),
-                "color": "#FF4C4C" # Red
+    # 1. Get 'Birth' Date from Inventory
+    inv = inventory_sheet.get_all_records()
+    for item in inv:
+        if str(item.get('Blume ID')) == str(blume_id):
+            history.append({
+                "date": item.get('Originated Date', '2000-01-01'),
+                "event": "Device Created",
+                "type": "ORIGIN",
+                "notes": f"Serial: {item.get('Serial Number')}",
+                "color": "#3498DB" # Blue
             })
 
-    # 2. Get Resolved History
+    # 2. Get Active Faults (Current Issues)
+    faults = fault_sheet.get_all_records()
+    for f in faults:
+        if str(f.get('Blume ID')) == str(blume_id):
+            history.append({
+                "date": f.get('Issue Date'),
+                "event": f"FAULT: {f.get('Device Status')}",
+                "type": "ACTIVE",
+                "notes": f.get('Issue Notes'),
+                "color": "#E74C3C" # Red
+            })
+
+    # 3. Get Resolved History (Past Repairs)
+    # Note: Use the variable name you assigned to Sheet 4 (repair_sheet)
     resolved = repair_sheet.get_all_records()
-    for row in resolved:
-        if str(row.get('Blume ID')) == str(blume_id):
-            all_events.append({
-                "date": row.get('Resolved Date'),
+    for r in resolved:
+        if str(r.get('Blume ID')) == str(blume_id):
+            history.append({
+                "date": r.get('Resolved Date'),
+                "event": "REPAIR COMPLETE",
                 "type": "RESOLVED",
-                "status": "Healthy",
-                "notes": f"Tech Note: {row.get('Tech Notes')}",
-                "color": "#2ECC71" # Green
+                "notes": r.get('Tech Notes'),
+                "color": "#27AE60" # Green
             })
 
-    # Sort by date (Newest at top)
-    all_events.sort(key=lambda x: x['date'], reverse=True)
-    return all_events
+    # Sort: Newest events at the top
+    history.sort(key=lambda x: x['date'], reverse=True)
+    return history

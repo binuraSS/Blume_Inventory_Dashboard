@@ -8,78 +8,88 @@ class SearchView(ctk.CTkFrame):
         p = ctk.CTkFrame(self, fg_color="transparent")
         p.pack(fill="both", expand=True, padx=20, pady=20)
         
+        # Search Bar
         bar = ctk.CTkFrame(p, fg_color="transparent")
         bar.pack(fill="x", pady=(0, 20))
         
-        self.entry = ctk.CTkEntry(bar, placeholder_text="Search ID...", width=400, height=40)
+        self.entry = ctk.CTkEntry(bar, placeholder_text="Search Blume ID...", width=400, height=40)
         self.entry.pack(side="left", padx=10)
+        self.entry.bind("<Return>", lambda e: self.run_search())
         
         btn = ctk.CTkButton(bar, text="Search", width=100, command=self.run_search)
         apply_material_button(btn, "primary")
         btn.pack(side="left")
 
+        # Results Area
         self.res_area = ctk.CTkScrollableFrame(p, fg_color=G_WINDOW_BG, corner_radius=8)
         self.res_area.pack(fill="both", expand=True)
 
     def run_search(self):
+        # Clear results
         for w in self.res_area.winfo_children(): w.destroy()
-        results = database.search_device(self.entry.get())
+        
+        query = self.entry.get().strip()
+        if not query: return
+        
+        results = database.search_device(query)
+        
         for item in results:
-            issues = item.get('issues', [])
-            if not issues:
-                self.create_card(item, None)
-            else:
-                for issue in issues:
-                    self.create_card(item, issue)
+            self.create_device_result(item)
 
-   # views/search_view.py
-
-    def create_card(self, item, issue):
+    def create_device_result(self, item):
+        """Creates a single large card for the device with a nested timeline."""
+        bid = item['Blume ID']
+        
+        # Main Card Container
         card = ctk.CTkFrame(self.res_area, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
-        card.pack(fill="x", pady=8, padx=15)
+        card.pack(fill="x", pady=10, padx=15)
         
-        accent_color = G_RED if issue else G_BLUE
-        ctk.CTkFrame(card, width=6, fg_color=accent_color, corner_radius=0).pack(side="left", fill="y")
+        # Header Section
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=15)
         
-        cont = ctk.CTkFrame(card, fg_color="transparent")
-        cont.pack(side="left", fill="both", expand=True, padx=20, pady=15)
+        self._add_header_text(header, "Blume ID", bid)
+        ctk.CTkLabel(header, text=f"  ({item['Item Category']})", font=FONT_BODY, text_color=G_SUBTEXT).pack(side="left")
+        
+        # Device Info Row
+        info_row = ctk.CTkFrame(card, fg_color="transparent")
+        info_row.pack(fill="x", padx=20, pady=(0, 10))
+        ctk.CTkLabel(info_row, text=f"Serial: {item['Serial Number']}  |  Onboarded: {item['Originated Date']}", 
+                     font=FONT_LABEL, text_color=G_SUBTEXT).pack(side="left")
 
-        # 1. Header (The Titles)
-        h_f = ctk.CTkFrame(cont, fg_color="transparent")
-        h_f.pack(fill="x", pady=(0, 10))
+        # --- THE TIMELINE SECTION ---
+        ctk.CTkLabel(card, text="Device History & Status Timeline", font=FONT_LABEL_BOLD, text_color=G_BLUE).pack(anchor="w", padx=20, pady=(10, 5))
         
-        if issue:
-            self._add_header_text(h_f, "Ticket ID", issue['Ticket ID'])
-            ctk.CTkLabel(h_f, text="  •  ", text_color=G_BORDER).pack(side="left")
-            self._add_header_text(h_f, "Blume ID", item['Blume ID'])
+        timeline_box = ctk.CTkFrame(card, fg_color="#F8F9FA", corner_radius=8, border_width=1, border_color="#E0E0E0")
+        timeline_box.pack(fill="x", padx=20, pady=(0, 20))
+
+        # Fetch full history (Active + Archived)
+        history = database.get_device_history(bid)
+        
+        if not history:
+            ctk.CTkLabel(timeline_box, text="No repair history found.", font=FONT_LABEL).pack(pady=10)
         else:
-            self._add_header_text(h_f, "Blume ID", item['Blume ID'])
+            for entry in history:
+                self._add_timeline_node(timeline_box, entry)
 
-        # --- 2. THE MISSING PART: Body Info ---
-        body = ctk.CTkFrame(cont, fg_color="transparent")
-        body.pack(fill="x")
-
-        # Field: Category
-        self._add_field(body, "Category", item['Item Category'])
-        # Field: Serial Number
-        self._add_field(body, "Serial No", item['Serial Number'])
+    def _add_timeline_node(self, parent, entry):
+        """Visual helper for a single event in the timeline."""
+        node = ctk.CTkFrame(parent, fg_color="transparent")
+        node.pack(fill="x", padx=15, pady=5)
         
-        if issue:
-            self._add_field(body, "Status", issue['Status'], is_error=True)
-            # Add a separator for notes
-            ctk.CTkFrame(cont, height=1, fg_color=G_BORDER).pack(fill="x", pady=10)
-            ctk.CTkLabel(cont, text=issue['Notes'], font=FONT_BODY, text_color=G_TEXT, wraplength=600, justify="left").pack(anchor="w")
-        else:
-            self._add_field(body, "Status", "Operational")
-
-    def _add_field(self, parent, label, value, is_error=False):
-        """Standardized Material Row helper"""
-        f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.pack(fill="x", pady=2)
-        ctk.CTkLabel(f, text=f"{label}: ", font=FONT_LABEL, text_color=G_SUBTEXT, width=100, anchor="w").pack(side="left")
+        # Vertical Line & Dot logic
+        indicator = ctk.CTkLabel(node, text="●", font=("Arial", 18), text_color=entry['color'])
+        indicator.pack(side="left", anchor="n", pady=2)
         
-        color = G_RED if is_error else G_TEXT
-        ctk.CTkLabel(f, text=value, font=FONT_BODY, text_color=color).pack(side="left")
+        # Event Details
+        details = ctk.CTkFrame(node, fg_color="transparent")
+        details.pack(side="left", fill="x", expand=True, padx=10)
+        
+        top_line = f"{entry['date']} — {entry['event']}"
+        ctk.CTkLabel(details, text=top_line, font=FONT_BODY_BOLD, text_color=G_TEXT).pack(anchor="w")
+        
+        if entry.get('notes'):
+            ctk.CTkLabel(details, text=entry['notes'], font=FONT_LABEL, text_color=G_SUBTEXT, wraplength=500, justify="left").pack(anchor="w")
 
     def _add_header_text(self, parent, label, val):
         ctk.CTkLabel(parent, text=f"{label}: ", font=("Segoe UI", 18), text_color=G_SUBTEXT).pack(side="left")

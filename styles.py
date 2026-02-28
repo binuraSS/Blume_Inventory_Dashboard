@@ -9,6 +9,8 @@ FONT_H1 = ("Segoe UI", 28, "bold")
 FONT_H2 = ("Segoe UI", 18, "bold")
 FONT_BODY = ("Segoe UI", 13)
 FONT_LABEL = ("Segoe UI", 12, "bold")
+FONT_LABEL_BOLD = ("Segoe UI", 12, "bold") # <--- Add this line
+FONT_BODY_BOLD = ("Segoe UI", 14, "bold")
 
 def apply_material_button(btn, variant="primary"):
     if variant == "primary":
