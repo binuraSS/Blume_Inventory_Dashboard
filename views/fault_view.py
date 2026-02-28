@@ -28,5 +28,5 @@ class FaultReportView(ctk.CTkFrame):
                 tid = database.report_fault(self.bid.get(), self.status.get(), self.notes.get("1.0", "end-1c"))
                 self.after(0, lambda: self.show_msg(f"Fault Logged: {tid}"))
             except Exception as e:
-                self.after(0, lambda: self.show_msg(f"Error: {str(e)}"))
+                self.after(0, lambda err=e: self.show_msg(f"Error: {str(err)}"))
         threading.Thread(target=task, daemon=True).start()

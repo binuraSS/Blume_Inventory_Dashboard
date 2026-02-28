@@ -13,50 +13,55 @@ spreadsheet = client.open(SPREADSHEET_NAME)
 # Sheet Definitions
 inventory_sheet = spreadsheet.get_worksheet(0) # Sheet 1: Inventory
 fault_sheet = spreadsheet.get_worksheet(1)     # Sheet 2: Active Faults
-repair_sheet = spreadsheet.get_worksheet(2)    # Sheet 3: (Assuming this is your archive/Sheet 4)
+repair_sheet = spreadsheet.get_worksheet(2)    # Sheet 3/4: Archive
 
-def get_next_ticket_id():
-    """Checks both active and archived sheets for the highest ID ever used."""
-    prefix = "ID-"
+# --- SYNC & MAINTENANCE LOGIC ---
+
+def update_last_service(blume_id):
+    """Updates the 'Last Service' column (Col E / 5) in the Inventory sheet."""
     try:
-        # Get Ticket IDs from Column A (index 1) of both sheets
-        active_ids = fault_sheet.col_values(1)[1:]   # Skip header
-        archive_ids = repair_sheet.col_values(1)[1:] # Skip header
-        all_known_ids = active_ids + archive_ids
-        
-        if not all_known_ids:
-            return f"{prefix}00001"
-
-        # Extract digits using regex
-        nums = []
-        for tid in all_known_ids:
-            found = re.findall(r'\d+', str(tid))
-            if found:
-                nums.append(int(found[0]))
-        
-        if not nums:
-            return f"{prefix}00001"
-
-        # Increment the highest number found
-        next_id_num = max(nums) + 1
-        return f"{prefix}{next_id_num:05d}"
+        cell = inventory_sheet.find(str(blume_id))
+        if cell:
+            today = datetime.today().strftime("%Y-%m-%d")
+            # Update Column 5 (E)
+            inventory_sheet.update_cell(cell.row, 5, today)
+            return True
     except Exception as e:
-        print(f"ID Generation Error: {e}")
-        return f"{prefix}99999" # Safety fallback
+        print(f"Sync Error: {e}")
+        return False
+
+def get_maintenance_status(blume_id):
+    """Calculates if 180 days have passed since Column E's date."""
+    try:
+        cell = inventory_sheet.find(str(blume_id))
+        # Get value from Column E
+        last_service_val = inventory_sheet.cell(cell.row, 5).value
+        
+        if not last_service_val or last_service_val == "N/A":
+            return "No Service History", "#F1C40F"
+
+        last_date = datetime.strptime(last_service_val, "%Y-%m-%d")
+        days_since = (datetime.now() - last_date).days
+        
+        if days_since >= 180:
+            return f"Maintenance Overdue ({days_since} days)", "#F1C40F"
+        return "Up to Date", "#27AE60"
+    except:
+        return "Status Unknown", "gray"
+
+# --- CORE FUNCTIONS (RESTORED & UPDATED) ---
 
 def add_device(blume_id, item, serial, date):
-    inventory_sheet.append_row([blume_id, item, serial, date])
+    """Adds new device to Sheet 1. Also sets the initial 'Last Service' to the creation date."""
+    # Row: Blume ID, Item, Serial, Originated Date, Last Service (Sync Column)
+    inventory_sheet.append_row([blume_id, item, serial, date, date])
 
 def report_fault(blume_id, status, notes):
     """Generates a globally unique ID and logs the fault to Sheet 2."""
     try:
-        # Use the smart ID generator
         new_tid = get_next_ticket_id()
         issue_date = datetime.today().strftime("%Y-%m-%d")
-        
-        # Row format for Sheet 2: Ticket ID, Blume ID, Issue Date, Device Status, Issue Notes
         new_row = [new_tid, blume_id, issue_date, status, notes]
-        
         fault_sheet.append_row(new_row)
         return new_tid
     except Exception as e:
@@ -64,9 +69,8 @@ def report_fault(blume_id, status, notes):
         raise e
 
 def archive_resolved_ticket(ticket_id, tech_notes):
-    """Moves a ticket from Active (Sheet 2) to Archive (Sheet 3) with tech notes."""
+    """Moves ticket to Archive and updates the service clock on Sheet 1."""
     try:
-        # 1. Fetch all data from active fault sheet
         rows = fault_sheet.get_all_values()
         target_row = None
         row_index = -1
@@ -77,34 +81,55 @@ def archive_resolved_ticket(ticket_id, tech_notes):
                 row_index = i + 1
                 break
         
-        if not target_row:
-            return False
+        if not target_row: return False
 
-        # 2. Prepare data for Archive (Sheet 3)
-        # Columns: Ticket ID, Blume ID, Issue Date, Device Status, Issue Notes, Issue Status, Tech Notes, Resolved Date
         resolved_date = datetime.today().strftime("%Y-%m-%d")
         new_row = [
-            target_row[0], # Ticket ID
-            target_row[1], # Blume ID
-            target_row[2], # Issue Date
-            target_row[3], # Device Status
-            target_row[4], # Issue Notes
-            "Resolved",    # Issue Status
-            tech_notes,    # From GUI
-            resolved_date  # Current Date
+            target_row[0], target_row[1], target_row[2], 
+            target_row[3], target_row[4], "Resolved",    
+            tech_notes, resolved_date  
         ]
 
-        # 3. Append to Archive and Delete from Active
         repair_sheet.append_row(new_row)
         fault_sheet.delete_rows(row_index)
-        return True
         
+        # Sync the first sheet
+        update_last_service(target_row[1]) 
+        return True
     except Exception as e:
         print(f"Database Error: {e}")
         return False
 
+def mark_as_inspected(blume_id, tech_name="Admin"):
+    """Resets the 180-day clock by updating Sheet 1 and adding an Archive log."""
+    try:
+        new_tid = get_next_ticket_id()
+        today = datetime.today().strftime("%Y-%m-%d")
+        inspection_entry = [
+            new_tid, blume_id, today, "Healthy", 
+            "Routine Check", "Inspected", f"Inspected by {tech_name}", today
+        ]
+        repair_sheet.append_row(inspection_entry)
+        return update_last_service(blume_id)
+    except Exception as e:
+        print(f"Inspection Error: {e}")
+        return False
+
+# --- UTILITY FUNCTIONS ---
+
+def get_next_ticket_id():
+    prefix = "ID-"
+    try:
+        active_ids = fault_sheet.col_values(1)[1:]   
+        archive_ids = repair_sheet.col_values(1)[1:] 
+        all_known_ids = active_ids + archive_ids
+        if not all_known_ids: return f"{prefix}00001"
+        nums = [int(f[0]) for tid in all_known_ids if (f := re.findall(r'\d+', str(tid)))]
+        return f"{prefix}{max(nums) + 1:05d}" if nums else f"{prefix}00001"
+    except Exception as e:
+        print(f"ID Error: {e}"); return f"{prefix}99999"
+
 def search_device(query_value):
-    """Searches inventory and active faults."""
     all_items = inventory_sheet.get_all_records()
     all_faults = fault_sheet.get_all_records()
     results = []
@@ -112,72 +137,40 @@ def search_device(query_value):
 
     for item in all_items:
         bid = str(item.get('Blume ID', ''))
-        
-        # Filter faults for this specific device
         item_faults = [f for f in all_faults if str(f.get('Blume ID')) == bid]
-        
-        # Map Google Sheet headers to UI dictionary keys
-        formatted_faults = [{
-            "Ticket ID": f.get('Ticket ID', 'N/A'),
-            "Issue Date": f.get('Issue Date', 'N/A'),
-            "Status": f.get('Device Status', 'N/A'), # Key fixed here
-            "Notes": f.get('Issue Notes', '')
-        } for f in item_faults]
+        formatted_faults = [{"Ticket ID": f.get('Ticket ID', 'N/A'), "Issue Date": f.get('Issue Date', 'N/A'),
+                             "Status": f.get('Device Status', 'N/A'), "Notes": f.get('Issue Notes', '')} for f in item_faults]
 
-        # Use the mapped "Status" key for the search comparison
-        match_in_faults = any(query_lower in str(f["Status"]).lower() for f in formatted_faults)
-
-        if query_lower == bid.lower() or match_in_faults:
+        if query_lower == bid.lower() or any(query_lower in str(f["Status"]).lower() for f in formatted_faults):
             results.append({
                 "Blume ID": bid,
                 "Item Category": item.get('Item Category', 'Unknown'),
                 "Serial Number": item.get('Serial Number', 'N/A'),
                 "Originated Date": item.get('Originated Date', 'N/A'),
+                "Last Service": item.get('Last Service', 'N/A'),
                 "issues": formatted_faults 
             })
     return results
 
 def get_device_history(blume_id):
-    """Combines all records for a Blume ID into a single sorted timeline."""
     history = []
-    
-    # 1. Get 'Birth' Date from Inventory
     inv = inventory_sheet.get_all_records()
     for item in inv:
         if str(item.get('Blume ID')) == str(blume_id):
-            history.append({
-                "date": item.get('Originated Date', '2000-01-01'),
-                "event": "Device Created",
-                "type": "ORIGIN",
-                "notes": f"Serial: {item.get('Serial Number')}",
-                "color": "#3498DB" # Blue
-            })
-
-    # 2. Get Active Faults (Current Issues)
+            history.append({"date": item.get('Originated Date', '2000-01-01'), "event": "Device Created", 
+                            "type": "ORIGIN", "notes": f"Serial: {item.get('Serial Number')}", "color": "#3498DB"})
+    
     faults = fault_sheet.get_all_records()
     for f in faults:
         if str(f.get('Blume ID')) == str(blume_id):
-            history.append({
-                "date": f.get('Issue Date'),
-                "event": f"FAULT: {f.get('Device Status')}",
-                "type": "ACTIVE",
-                "notes": f.get('Issue Notes'),
-                "color": "#E74C3C" # Red
-            })
+            history.append({"date": f.get('Issue Date'), "event": f"FAULT: {f.get('Device Status')}", 
+                            "type": "ACTIVE", "notes": f.get('Issue Notes'), "color": "#E74C3C"})
 
-    # 3. Get Resolved History (Past Repairs)
-    # Note: Use the variable name you assigned to Sheet 4 (repair_sheet)
     resolved = repair_sheet.get_all_records()
     for r in resolved:
         if str(r.get('Blume ID')) == str(blume_id):
-            history.append({
-                "date": r.get('Resolved Date'),
-                "event": "REPAIR COMPLETE",
-                "type": "RESOLVED",
-                "notes": r.get('Tech Notes'),
-                "color": "#27AE60" # Green
-            })
+            history.append({"date": r.get('Resolved Date'), "event": "REPAIR COMPLETE", 
+                            "type": "RESOLVED", "notes": r.get('Tech Notes'), "color": "#27AE60"})
 
-    # Sort: Newest events at the top
     history.sort(key=lambda x: x['date'], reverse=True)
     return history
