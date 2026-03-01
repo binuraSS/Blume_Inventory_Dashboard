@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from styles import *
-# This looks into the views folder and pulls classes defined in __init__.py
-from views import AddDeviceView, FaultReportView, SearchView, RepairView
+# Ensure these class names match exactly what is in your views/__init__.py
+from views import AddDeviceView, FaultReportView, SearchView, RepairView, DashboardView
 
 class BlumeApp(ctk.CTk):
     def __init__(self):
@@ -21,17 +21,21 @@ class BlumeApp(ctk.CTk):
 
         # Initialize and Stack Frames
         self.frames = {}
-        for F in (AddDeviceView, FaultReportView, SearchView, RepairView):
-            # Views that need the snackbar get the show_msg callback
-            if F in (AddDeviceView, FaultReportView, RepairView):
+        # We define which views need the 'show_msg' callback
+        views_needing_msg = (AddDeviceView, FaultReportView, RepairView, DashboardView)
+        
+        for F in (DashboardView, SearchView, RepairView, FaultReportView, AddDeviceView):
+            if F in views_needing_msg:
                 frame = F(self.view_container, self.show_msg)
             else:
                 frame = F(self.view_container)
             
             self.frames[F.__name__] = frame
+            # FIXED: This line MUST be indented inside the 'for' loop
             frame.grid(row=0, column=0, sticky="nsew")
 
-        self.show_frame("AddDeviceView")
+        # Start on the Overview
+        self.show_frame("DashboardView")
 
     def _init_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=280, fg_color=G_BG, corner_radius=0, border_width=1, border_color=G_BORDER)
@@ -41,12 +45,13 @@ class BlumeApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="Blume", font=FONT_H1, text_color=G_BLUE).pack(pady=(50, 40))
 
         self.nav_btns = {}
+        # The second value in the tuple must match the Class Name exactly
         menu = [
-            ("Add New Device", "AddDeviceView"),
-            ("Search Inventory", "SearchView"),
-            ("Report Fault", "FaultReportView"),
-            ("Repair Center", "RepairView"),
-            
+            ("🔭 Overview", "DashboardView"),      
+            ("🔍 Search & History", "SearchView"), 
+            ("🛠️ Active Workshop", "RepairView"),  
+            ("⚠️ Report Fault", "FaultReportView"),
+            ("➕ Add New Device", "AddDeviceView"),
         ]
 
         for text, view_name in menu:
@@ -69,9 +74,20 @@ class BlumeApp(ctk.CTk):
         self.snackbar.place_forget()
 
     def show_frame(self, name):
+        """Switches the visible frame and refreshes data if it's the Dashboard."""
+        if name not in self.frames:
+            print(f"Error: Frame {name} not found!")
+            return
+
         for btn_name, btn_obj in self.nav_btns.items():
             apply_material_button(btn_obj, "primary" if btn_name == name else "secondary")
+        
+        # Bring the selected frame to the front
         self.frames[name].tkraise()
+        
+        # CUSTOM ACTION: Refresh Dashboard stats every time we switch to it
+        if name == "DashboardView":
+            self.frames[name].refresh_data()
 
     def show_msg(self, text):
         self.snackbar_label.configure(text=text)

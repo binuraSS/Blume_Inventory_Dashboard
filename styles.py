@@ -11,6 +11,13 @@ FONT_BODY = ("Segoe UI", 13)
 FONT_LABEL = ("Segoe UI", 12, "bold")
 FONT_LABEL_BOLD = ("Segoe UI", 12, "bold") # <--- Add this line
 FONT_BODY_BOLD = ("Segoe UI", 14, "bold")
+G_BLUE, G_RED = "#1A73E8", "#D93025"
+G_GREEN, G_YELLOW = "#1E8E3E", "#F9AB00"  # New Pulse Colors
+G_BG, G_WINDOW_BG = "#FFFFFF", "#F8F9FA"
+G_TEXT, G_SUBTEXT, G_BORDER = "#202124", "#5F6368", "#DADCE0"
+
+# New Font for the big Pulse Numbers
+FONT_PULSE = ("Segoe UI", 42, "bold")
 
 def apply_material_button(btn, variant="primary"):
     if variant == "primary":

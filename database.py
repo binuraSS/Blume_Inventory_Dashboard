@@ -43,7 +43,7 @@ def get_maintenance_status(blume_id):
         last_date = datetime.strptime(last_service_val, "%Y-%m-%d")
         days_since = (datetime.now() - last_date).days
         
-        if days_since >= 180:
+        if days_since >= 1:
             return f"Maintenance Overdue ({days_since} days)", "#F1C40F"
         return "Up to Date", "#27AE60"
     except:
@@ -174,3 +174,51 @@ def get_device_history(blume_id):
 
     history.sort(key=lambda x: x['date'], reverse=True)
     return history
+def get_fleet_stats():
+    """Calculates counts for the Dashboard Pulse."""
+    try:
+        # 1. Get all Inventory (Sheet 1) and Active Faults (Sheet 2)
+        all_inventory = inventory_sheet.get_all_records()
+        all_active_faults = fault_sheet.get_all_records()
+        
+        # 2. Count Active Faults (The RED Pulse)
+        broken_count = len(all_active_faults)
+        
+        # Create a set of IDs that are currently broken to avoid double-counting
+        broken_ids = {str(f.get('Blume ID')) for f in all_active_faults}
+        
+        overdue_count = 0
+        healthy_count = 0
+        today = datetime.now()
+
+        for item in all_inventory:
+            bid = str(item.get('Blume ID'))
+            
+            # Skip if it's already in the 'Broken' bucket
+            if bid in broken_ids:
+                continue
+                
+            # 3. Check Maintenance (The YELLOW Pulse)
+            # Pull from Column E (Last Service)
+            last_service_str = item.get('Last Service')
+            
+            try:
+                last_date = datetime.strptime(last_service_str, "%Y-%m-%d")
+                days_since = (today - last_date).days
+                if days_since >= 180:
+                    overdue_count += 1
+                else:
+                    # 4. If not broken and not overdue, it's HEALTHY (The GREEN Pulse)
+                    healthy_count += 1
+            except (ValueError, TypeError):
+                # If date is missing/invalid, treat as overdue/needs attention
+                overdue_count += 1
+
+        return {
+            "broken": broken_count,
+            "overdue": overdue_count,
+            "healthy": healthy_count
+        }
+    except Exception as e:
+        print(f"Stats Error: {e}")
+        return {"broken": 0, "overdue": 0, "healthy": 0}
