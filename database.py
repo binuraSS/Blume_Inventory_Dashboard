@@ -174,51 +174,78 @@ def get_device_history(blume_id):
 
     history.sort(key=lambda x: x['date'], reverse=True)
     return history
+
 def get_fleet_stats():
-    """Calculates counts for the Dashboard Pulse."""
+    """Calculates the 🟢🟡🔴 counts for the Pulse Cards."""
     try:
-        # 1. Get all Inventory (Sheet 1) and Active Faults (Sheet 2)
-        all_inventory = inventory_sheet.get_all_records()
-        all_active_faults = fault_sheet.get_all_records()
+        inventory = inventory_sheet.get_all_records()
+        active_faults = fault_sheet.get_all_records()
         
-        # 2. Count Active Faults (The RED Pulse)
-        broken_count = len(all_active_faults)
-        
-        # Create a set of IDs that are currently broken to avoid double-counting
-        broken_ids = {str(f.get('Blume ID')) for f in all_active_faults}
+        broken_count = len(active_faults)
+        broken_ids = {str(f.get('Blume ID')) for f in active_faults}
         
         overdue_count = 0
         healthy_count = 0
         today = datetime.now()
 
-        for item in all_inventory:
+        for item in inventory:
             bid = str(item.get('Blume ID'))
+            if bid in broken_ids: continue # Already counted in Red
             
-            # Skip if it's already in the 'Broken' bucket
-            if bid in broken_ids:
-                continue
-                
-            # 3. Check Maintenance (The YELLOW Pulse)
-            # Pull from Column E (Last Service)
-            last_service_str = item.get('Last Service')
-            
+            # Use Column E (Last Service)
+            last_service_str = item.get('Last Service', '')
             try:
                 last_date = datetime.strptime(last_service_str, "%Y-%m-%d")
-                days_since = (today - last_date).days
-                if days_since >= 180:
+                if (today - last_date).days >= 180:
                     overdue_count += 1
                 else:
-                    # 4. If not broken and not overdue, it's HEALTHY (The GREEN Pulse)
                     healthy_count += 1
-            except (ValueError, TypeError):
-                # If date is missing/invalid, treat as overdue/needs attention
-                overdue_count += 1
+            except:
+                overdue_count += 1 # Default to overdue if date is missing
 
-        return {
-            "broken": broken_count,
-            "overdue": overdue_count,
-            "healthy": healthy_count
-        }
+        return {"broken": broken_count, "overdue": overdue_count, "healthy": healthy_count}
     except Exception as e:
         print(f"Stats Error: {e}")
         return {"broken": 0, "overdue": 0, "healthy": 0}
+
+def get_recent_activity(limit=8):
+    """Combines Sheet 2 and Sheet 3 for the Live Feed."""
+    try:
+        # Get last few from Active and last few from Archive
+        active_raw = fault_sheet.get_all_records()[-limit:]
+        repair_raw = repair_sheet.get_all_records()[-limit:]
+        
+        feed = []
+        # Items from Repair Sheet (Sheet 3) - Green
+        for r in repair_raw:
+            feed.append({
+                "bid": r.get("Blume ID", "N/A"),
+                "event": "Fixed & Archived",
+                "color": "#1E8E3E" # Green
+            })
+        # Items from Fault Sheet (Sheet 2) - Red
+        for f in active_raw:
+            feed.append({
+                "bid": f.get("Blume ID", "N/A"),
+                "event": "Fault Reported",
+                "color": "#D93025" # Red
+            })
+        
+        feed.reverse() # Newest on top
+        return feed[:limit]
+    except:
+        return []
+
+def get_system_insights():
+    """Looks at Sheet 2 to see which Categories are currently failing."""
+    try:
+        active_faults = fault_sheet.get_all_records()
+        stats = {}
+        for f in active_faults:
+            # IMPORTANT: Check if your header is 'Item Category' or 'Category'
+            cat = f.get("Item Category", "Uncategorized")
+            stats[cat] = stats.get(cat, 0) + 1
+            
+        return sorted(stats.items(), key=lambda x: x[1], reverse=True)
+    except:
+        return []

@@ -1,95 +1,107 @@
-# views/dashboard_view.py
 import customtkinter as ctk
 from styles import *
 import database
 
 class DashboardView(ctk.CTkFrame):
     def __init__(self, master, show_msg_cb=None):
-        # Using G_WINDOW_BG to contrast against the white sidebar
         super().__init__(master, fg_color="transparent")
         self.show_msg = show_msg_cb
-
-        # --- HEADER SECTION ---
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.pack(fill="x", pady=(10, 30))
-
-        ctk.CTkLabel(header_frame, text="Fleet Overview", font=FONT_H1, text_color=G_TEXT).pack(side="left")
         
-        # System Health Percentage Label
-        self.health_score_label = ctk.CTkLabel(header_frame, text="Score: --%", font=FONT_H2, text_color=G_BLUE)
-        self.health_score_label.pack(side="right", padx=20)
+        # --- TOP LAYER: HEADER & SCORE ---
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 20))
+        ctk.CTkLabel(header, text="Fleet Overview", font=FONT_H1).pack(side="left")
+        self.score_label = ctk.CTkLabel(header, text="Health: --%", font=FONT_H2, text_color=G_BLUE)
+        self.score_label.pack(side="right")
 
-        # --- PULSE CONTAINER (The Big Numbers) ---
-        self.pulse_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.pulse_container.pack(fill="x", pady=10)
-
-        # Create the three Pulse Cards
+        # --- MIDDLE LAYER: PULSE CARDS ---
+        self.card_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.card_frame.pack(fill="x")
         self.cards = {}
-        self._create_pulse_card("Active Faults", G_RED, "broken")
-        self._create_pulse_card("Maintenance Due", G_YELLOW, "overdue")
-        self._create_pulse_card("Healthy Fleet", G_GREEN, "healthy")
+        self._create_card("Active Faults", G_RED, "broken")
+        self._create_card("Maintenance Due", G_YELLOW, "overdue")
+        self._create_card("Healthy Fleet", G_GREEN, "healthy")
 
-        # --- ACTION AREA ---
-        info_box = ctk.CTkFrame(self, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
-        info_box.pack(fill="both", expand=True, pady=20)
+        # --- BOTTOM LAYER: TWO COLUMNS (Insights & Live Feed) ---
+        bottom_row = ctk.CTkFrame(self, fg_color="transparent")
+        bottom_row.pack(fill="both", expand=True, pady=20)
+        bottom_row.grid_columnconfigure(0, weight=2) 
+        bottom_row.grid_columnconfigure(1, weight=1) 
+
+        # Column 1: Main Content (System Insights)
+        self.main_content = ctk.CTkFrame(bottom_row, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
+        self.main_content.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        ctk.CTkLabel(self.main_content, text="System Insights", font=FONT_LABEL_BOLD).pack(pady=10)
         
-        ctk.CTkLabel(info_box, text="Quick Actions & Insights", font=FONT_LABEL_BOLD, text_color=G_TEXT).pack(pady=15)
+        self.refresh_btn = ctk.CTkButton(self.main_content, text="Manual Sync", command=self.refresh_data)
+        apply_material_button(self.refresh_btn, "secondary")
+        self.refresh_btn.pack(side="bottom", pady=20)
+
+        # Column 2: Live Activity Feed
+        self.feed_box = ctk.CTkFrame(bottom_row, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
+        self.feed_box.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        ctk.CTkLabel(self.feed_box, text="Recent Activity", font=FONT_LABEL_BOLD).pack(pady=10)
         
-        # Functional Buttons
-        btn_row = ctk.CTkFrame(info_box, fg_color="transparent")
-        btn_row.pack(pady=10)
+        self.feed_container = ctk.CTkScrollableFrame(self.feed_box, fg_color="transparent", height=300)
+        self.feed_container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.refresh_btn = ctk.CTkButton(btn_row, text="🔄 Refresh Stats", command=self.refresh_data)
-        apply_material_button(self.refresh_btn, "primary")
-        self.refresh_btn.pack(side="left", padx=10)
+        # Start the background Pulse (Every 30 seconds)
+        self.start_auto_refresh()
 
-        # Automatically refresh when the view is opened
-        self.after(500, self.refresh_data)
+    def _create_card(self, title, color, key):
+        card = ctk.CTkFrame(self.card_frame, fg_color="white", corner_radius=12, border_width=2, border_color=color)
+        card.pack(side="left", fill="both", expand=True, padx=5)
+        ctk.CTkLabel(card, text=title, font=FONT_LABEL, text_color=G_SUBTEXT).pack(pady=(15, 0))
+        val = ctk.CTkLabel(card, text="--", font=FONT_PULSE, text_color=color)
+        val.pack(pady=20)
+        self.cards[key] = val
 
-    def _create_pulse_card(self, title, color, key):
-        """Helper to create the 🟢🟡🔴 metric cards."""
-        card = ctk.CTkFrame(self.pulse_container, fg_color="white", corner_radius=12, 
-                            border_width=2, border_color=color, width=220, height=180)
-        card.pack(side="left", padx=10, expand=True)
-        card.pack_propagate(False)
+    def start_auto_refresh(self):
+        self.refresh_data()
+        self.after(30000, self.start_auto_refresh)
 
-        ctk.CTkLabel(card, text=title, font=FONT_LABEL, text_color=G_SUBTEXT).pack(pady=(20, 0))
+    def update_feed(self, events):
+        """Clears and repopulates the Recent Activity list."""
+        for w in self.feed_container.winfo_children():
+            w.destroy()
         
-        # Big Pulse Number
-        val_label = ctk.CTkLabel(card, text="--", font=FONT_PULSE, text_color=color)
-        val_label.pack(expand=True)
-        self.cards[key] = val_label
+        if not events:
+            ctk.CTkLabel(self.feed_container, text="No recent activity", font=FONT_BODY, text_color=G_SUBTEXT).pack(pady=10)
+            return
+
+        for e in events:
+            line = ctk.CTkFrame(self.feed_container, fg_color="#F8F9FA", corner_radius=6)
+            line.pack(fill="x", pady=2)
+            ctk.CTkLabel(line, text="●", text_color=e['color'], font=("Arial", 12)).pack(side="left", padx=5)
+            ctk.CTkLabel(line, text=f"{e['bid']}: {e['event']}", font=FONT_BODY, text_color=G_TEXT).pack(side="left")
 
     def refresh_data(self):
-        """Fetches live data from database.py and updates UI."""
-        # 1. Loading State
-        for key in self.cards:
-            self.cards[key].configure(text="..." )
-        
-        # 2. Call the Database
+        """Live sync with database.py"""
         try:
+            # 1. Update Cards
             stats = database.get_fleet_stats()
-            
-            # 3. Update Cards
             self.cards["broken"].configure(text=str(stats["broken"]))
             self.cards["overdue"].configure(text=str(stats["overdue"]))
             self.cards["healthy"].configure(text=str(stats["healthy"]))
 
-            # 4. Calculate Health Score %
-            total = stats["broken"] + stats["overdue"] + stats["healthy"]
-            if total > 0:
-                # Formula: Healthy / Total Fleet
-                score = int((stats["healthy"] / total) * 100)
-                self.health_score_label.configure(text=f"System Health: {score}%")
-                
-                # Dynamic color for the score
-                if score > 90: self.health_score_label.configure(text_color=G_GREEN)
-                elif score > 70: self.health_score_label.configure(text_color=G_YELLOW)
-                else: self.health_score_label.configure(text_color=G_RED)
+            # 2. Update Health Score
+            total = sum(stats.values())
+            score = int((stats["healthy"] / total) * 100) if total > 0 else 0
+            self.score_label.configure(text=f"Health: {score}%")
 
-            if self.show_msg:
-                self.show_msg("System Pulse Updated")
+            # 3. Update Insights (Failure Categories)
+            insights = database.get_system_insights()
+            for w in self.main_content.winfo_children():
+                if isinstance(w, ctk.CTkFrame): w.destroy()
+            
+            for cat, count in insights[:5]:
+                row = ctk.CTkFrame(self.main_content, fg_color="transparent")
+                row.pack(fill="x", padx=20, pady=5)
+                ctk.CTkLabel(row, text=cat, font=FONT_BODY).pack(side="left")
+                ctk.CTkLabel(row, text=str(count), font=FONT_BODY_BOLD, text_color=G_RED).pack(side="right")
+
+            # 4. Update Recent Activity Feed
+            self.update_feed(database.get_recent_activity())
 
         except Exception as e:
-            if self.show_msg:
-                self.show_msg(f"Update Failed: {str(e)}")
+            print(f"UI Refresh Error: {e}")
