@@ -6,6 +6,8 @@ class DashboardView(ctk.CTkFrame):
     def __init__(self, master, show_msg_cb=None):
         super().__init__(master, fg_color="transparent")
         self.show_msg = show_msg_cb
+        self.sync_label = ctk.CTkLabel(self, text="Syncing...", font=FONT_LABEL, text_color=G_SUBTEXT)
+        self.sync_label.pack(side="bottom", anchor="e", padx=20, pady=10)
         
         # --- TOP LAYER: HEADER & SCORE ---
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -89,19 +91,42 @@ class DashboardView(ctk.CTkFrame):
             score = int((stats["healthy"] / total) * 100) if total > 0 else 0
             self.score_label.configure(text=f"Health: {score}%")
 
-            # 3. Update Insights (Failure Categories)
+           # 3. Update Insights (With Visual Bars)
             insights = database.get_system_insights()
             for w in self.main_content.winfo_children():
                 if isinstance(w, ctk.CTkFrame): w.destroy()
             
+            # Calculate total issues to determine bar widths
+            total_issues = sum(count for cat, count in insights)
+
             for cat, count in insights[:5]:
+                # Row Container
                 row = ctk.CTkFrame(self.main_content, fg_color="transparent")
-                row.pack(fill="x", padx=20, pady=5)
+                row.pack(fill="x", padx=20, pady=8)
+                
+                # Labels
                 ctk.CTkLabel(row, text=cat, font=FONT_BODY).pack(side="left")
                 ctk.CTkLabel(row, text=str(count), font=FONT_BODY_BOLD, text_color=G_RED).pack(side="right")
+                
+                # --- THE VISUAL BAR ---
+                # Calculate width percentage (max width 300px)
+                width_pct = (count / total_issues) if total_issues > 0 else 0
+                bar_bg = ctk.CTkFrame(self.main_content, height=6, fg_color="#E0E0E0", corner_radius=3)
+                bar_bg.pack(fill="x", padx=20, pady=(0, 10))
+                
+                # The "Fill" of the bar
+                fill_width = int(width_pct * 1) # Relative to parent
+                bar_fill = ctk.CTkFrame(bar_bg, width=0, height=6, fg_color=G_BLUE, corner_radius=3)
+                bar_fill.place(relwidth=width_pct, relheight=1)
 
             # 4. Update Recent Activity Feed
             self.update_feed(database.get_recent_activity())
 
+            # --- UPDATE TIMESTAMP ---
+            from datetime import datetime
+            now = datetime.now().strftime("%H:%M:%S")
+            self.sync_label.configure(text=f"Last Synced: {now}")
+
         except Exception as e:
             print(f"UI Refresh Error: {e}")
+            self.sync_label.configure(text="Sync Failed", text_color=G_RED)

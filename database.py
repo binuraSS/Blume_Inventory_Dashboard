@@ -237,15 +237,26 @@ def get_recent_activity(limit=8):
         return []
 
 def get_system_insights():
-    """Looks at Sheet 2 to see which Categories are currently failing."""
+    """Calculates breakdown by Category by searching for the correct column."""
     try:
         active_faults = fault_sheet.get_all_records()
+        if not active_faults:
+            return []
+            
+        # Get the first row to see what the headers actually are
+        sample_row = active_faults[0]
+        
+        # Try to find the category column among common naming conventions
+        possible_keys = ["Item Category", "Category", "Device Type", "Type", "Device Status"]
+        target_key = next((k for k in possible_keys if k in sample_row), None)
+        
         stats = {}
         for f in active_faults:
-            # IMPORTANT: Check if your header is 'Item Category' or 'Category'
-            cat = f.get("Item Category", "Uncategorized")
-            stats[cat] = stats.get(cat, 0) + 1
+            # If we found a valid key, use it. Otherwise, use 'Unknown Column'
+            val = f.get(target_key, "Uncategorized") if target_key else "Uncategorized"
+            stats[val] = stats.get(val, 0) + 1
             
         return sorted(stats.items(), key=lambda x: x[1], reverse=True)
-    except:
+    except Exception as e:
+        print(f"Detailed Insights Error: {e}")
         return []
