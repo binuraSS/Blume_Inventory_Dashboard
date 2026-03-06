@@ -30,24 +30,38 @@ def update_last_service(blume_id):
         print(f"Sync Error: {e}")
         return False
 
-def get_maintenance_status(blume_id):
-    """Calculates if 180 days have passed since Column E's date."""
-    try:
-        cell = inventory_sheet.find(str(blume_id))
-        # Get value from Column E
-        last_service_val = inventory_sheet.cell(cell.row, 5).value
-        
-        if not last_service_val or last_service_val == "N/A":
-            return "No Service History", "#F1C40F"
+from datetime import datetime
 
-        last_date = datetime.strptime(last_service_val, "%Y-%m-%d")
-        days_since = (datetime.now() - last_date).days
-        
-        if days_since >= 1:
-            return f"Maintenance Overdue ({days_since} days)", "#F1C40F"
-        return "Up to Date", "#27AE60"
+def get_maintenance_status(blume_id):
+    """Calculates if a device is 'Stale' (no activity in 180 days)."""
+    # 1. Get the 'Birth' date from Inventory (Sheet 1)
+    inventory = inventory_sheet.get_all_records()
+    device_info = next((item for item in inventory if str(item['Blume ID']) == str(blume_id)), None)
+    
+    if not device_info:
+        return "Unknown", 0, False
+
+    # Start with the Onboarding date (Sheet 1)
+    last_date_str = device_info.get('Originated Date', '2000-01-01')
+    
+    # 2. Check your repair_sheet (Sheet 3) for a more recent repair date
+    # This is where the error was happening!
+    archive_data = repair_sheet.get_all_records() 
+    device_history = [r for r in archive_data if str(r.get('Blume ID')) == str(blume_id)]
+    
+    if device_history:
+        # Get the most recent Resolved Date
+        device_history.sort(key=lambda x: x.get('Resolved Date', '2000-01-01'), reverse=True)
+        last_date_str = device_history[0]['Resolved Date']
+
+    # 3. Calculate the gap
+    try:
+        last_seen = datetime.strptime(last_date_str, "%Y-%m-%d")
+        days_since = (datetime.today() - last_seen).days
+        is_stale = days_since > 180
+        return last_date_str, days_since, is_stale
     except:
-        return "Status Unknown", "gray"
+        return "Invalid Date", 0, False
 
 # --- CORE FUNCTIONS (RESTORED & UPDATED) ---
 
@@ -235,7 +249,22 @@ def get_recent_activity(limit=8):
         return feed[:limit]
     except:
         return []
-
+    
+def update_ticket_status(ticket_id, new_status):
+    """Moves card from Intake to Progress in Kanban."""
+    try:
+        records = fault_sheet.get_all_records()
+        for i, row in enumerate(records):
+            if str(row.get('Ticket ID')) == str(ticket_id):
+                # We update Column 3 (Status) in fault_sheet (Sheet 2)
+                # i+2 accounts for 0-indexing and the Header row
+                fault_sheet.update_cell(i + 2, 3, new_status)
+                return True
+        return False
+    except Exception as e:
+        print(f"Update Error: {e}")
+        return False
+    
 def get_system_insights():
     """Calculates breakdown by Category by searching for the correct column."""
     try:

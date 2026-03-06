@@ -8,82 +8,122 @@ class RepairView(ctk.CTkFrame):
         super().__init__(master, fg_color=G_BG, corner_radius=12, border_width=1, border_color=G_BORDER)
         self.show_msg = show_msg_callback
 
-        # Header Area
+        # --- Header ---
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=30, pady=(30, 10))
-        ctk.CTkLabel(header, text="Repair Center", font=FONT_H1, text_color=G_TEXT).pack(side="left")
-
-        # Scrollable List
-        self.list_area = ctk.CTkScrollableFrame(self, fg_color=G_WINDOW_BG, corner_radius=8)
-        self.list_area.pack(fill="both", expand=True, padx=30, pady=20)
+        ctk.CTkLabel(header, text="Repair Workshop", font=FONT_H1, text_color=G_TEXT).pack(side="left")
         
-        self.auto_refresh()
+        refresh_btn = ctk.CTkButton(header, text="🔄 Refresh Board", width=120, command=self.load_tickets)
+        apply_material_button(refresh_btn, "primary")
+        refresh_btn.pack(side="right")
 
-    def auto_refresh(self):
-        if not self.winfo_exists():
-            return
-        
-        # Check if the user is currently typing in any tech_entry box
-        # This prevents the UI from wiping their notes every 30 seconds
-        is_typing = False
-        for card in self.list_area.winfo_children():
-            for child in card.winfo_children(): # Check the card's children
-                if isinstance(child, ctk.CTkFrame): # Check the input_side frame
-                    for sub in child.winfo_children():
-                        if isinstance(sub, ctk.CTkEntry) and len(sub.get()) > 0:
-                            is_typing = True
-                            break
+        # --- Kanban Board (2 Columns) ---
+        self.board = ctk.CTkFrame(self, fg_color="transparent")
+        self.board.pack(fill="both", expand=True, padx=20, pady=10)
 
-        if not is_typing:
-            self.load_tickets()
+        # Left Column: New Arrivals
+        self.col_intake = self._create_column("📥 INTAKE / NEW FAULTS", G_BLUE)
+        # Right Column: Active Work
+        self.col_progress = self._create_column("🛠️ IN PROGRESS", G_ORANGE)
+
+        self.load_tickets()
+
+    def _create_column(self, title, color):
+        col_container = ctk.CTkFrame(self.board, fg_color="#F1F2F6", corner_radius=10)
+        col_container.pack(side="left", fill="both", expand=True, padx=10)
         
-        self.after(30000, self.auto_refresh)
+        head = ctk.CTkFrame(col_container, fg_color=color, height=40, corner_radius=10)
+        head.pack(fill="x", padx=5, pady=5)
+        ctk.CTkLabel(head, text=title, font=FONT_BODY_BOLD, text_color="white").pack(pady=5)
+        
+        scroll = ctk.CTkScrollableFrame(col_container, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=2, pady=2)
+        return scroll
 
     def load_tickets(self):
-        # We don't destroy here anymore; we destroy inside render 
-        # to make the transition smoother if possible.
         def fetch():
             try:
+                # Searching with empty string returns all devices with active issues
                 data = database.search_device("") 
                 self.after(0, lambda d=data: self.render(d))
             except Exception as e:
-                err = str(e)
-                self.after(0, lambda msg=err: self.show_msg(f"Fetch Error: {msg}"))
+                self.after(0, lambda: self.show_msg(f"Fetch Error: {str(e)}"))
                 
         threading.Thread(target=fetch, daemon=True).start()
 
     def render(self, data):
-        # Clear only when we have new data ready to show
-        for w in self.list_area.winfo_children(): 
-            w.destroy()
+        # Clear both columns before repopulating
+        for col in [self.col_intake, self.col_progress]:
+            for w in col.winfo_children(): w.destroy()
             
         for item in data:
             for issue in item.get('issues', []):
-                self.create_repair_card(item, issue)
+                status = str(issue.get('Status', '')).upper()
+                
+                # Check for Maintenance Flag
+                _, days, is_stale = database.get_maintenance_status(item['Blume ID'])
+                
+                if "PROGRESS" in status:
+                    self.create_progress_card(self.col_progress, item, issue)
+                else:
+                    self.create_intake_card(self.col_intake, item, issue, is_stale, days)
 
-    def create_repair_card(self, item, issue):
-        card = ctk.CTkFrame(self.list_area, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
-        card.pack(fill="x", pady=8, padx=5)
+    def create_intake_card(self, parent, item, issue, is_stale, days):
+        card = ctk.CTkFrame(parent, fg_color="white", corner_radius=8, border_width=1, border_color="#E0E0E0")
+        card.pack(fill="x", pady=6, padx=5)
 
-        cont = ctk.CTkFrame(card, fg_color="transparent")
-        cont.pack(side="left", fill="both", expand=True, padx=20, pady=15)
+        # Maintenance Alert Banner
+        if is_stale:
+            banner = ctk.CTkFrame(card, fg_color="#FFF3CD", height=26, corner_radius=4)
+            banner.pack(fill="x", padx=8, pady=8)
+            ctk.CTkLabel(banner, text=f"⚠️ FLAG: UNCHECKED FOR {days} DAYS", 
+                         font=("Segoe UI", 10, "bold"), text_color="#856404").pack(pady=2)
 
-        # Left Side: Info
-        ctk.CTkLabel(cont, text=f"TICKET: {issue['Ticket ID']}", font=FONT_H2, text_color=G_RED).pack(anchor="w")
-        ctk.CTkLabel(cont, text=f"Device: {item['Blume ID']} | Status: {issue['Status']}", font=FONT_BODY).pack(anchor="w")
-        ctk.CTkLabel(cont, text=f"User Notes: {issue['Notes']}", font=FONT_LABEL, text_color=G_SUBTEXT).pack(anchor="w", pady=(5,0))
+        ctk.CTkLabel(card, text=f"ID: {item['Blume ID']}", font=FONT_BODY_BOLD, text_color=G_BLUE).pack(anchor="w", padx=12, pady=(5,0))
+        ctk.CTkLabel(card, text=f"Issue: {issue['Notes']}", font=FONT_LABEL, text_color=G_SUBTEXT, wraplength=220, justify="left").pack(anchor="w", padx=12, pady=5)
 
-        # Right Side: Tech Input
-        input_side = ctk.CTkFrame(card, fg_color="transparent")
-        input_side.pack(side="right", padx=20, pady=10)
-
-        tech_entry = ctk.CTkEntry(input_side, placeholder_text="Enter Tech Notes...", width=250)
-        tech_entry.pack(pady=5)
-
-        btn = ctk.CTkButton(input_side, text="Complete Repair", width=120, 
-                            command=lambda t=issue['Ticket ID'], e=tech_entry: self.handle_resolve(t, e.get()))
+        btn = ctk.CTkButton(card, text="Start Repair →", height=32, 
+                            command=lambda t=issue['Ticket ID']: self.update_status(t, "In Progress"))
         apply_material_button(btn, "primary")
-        btn.pack(pady=5)
+        btn.pack(fill="x", padx=10, pady=10)
+
+    def create_progress_card(self, parent, item, issue):
+        card = ctk.CTkFrame(parent, fg_color="white", corner_radius=8, border_width=2, border_color=G_ORANGE)
+        card.pack(fill="x", pady=6, padx=5)
+
+        ctk.CTkLabel(card, text=f"REPAIRING: {item['Blume ID']}", font=FONT_BODY_BOLD).pack(anchor="w", padx=12, pady=(10,0))
+        
+        # Tech Entry Box
+        entry = ctk.CTkEntry(card, placeholder_text="Describe the fix...", height=30, font=FONT_LABEL)
+        entry.pack(fill="x", padx=10, pady=10)
+
+        # Quick Action Chips
+        tags_f = ctk.CTkFrame(card, fg_color="transparent")
+        tags_f.pack(fill="x", padx=10, pady=(0, 10))
+        for tag in ["Cleaned", "Reset", "Fixed", "Screen"]:
+            t_btn = ctk.CTkButton(tags_f, text=tag, width=45, height=22, font=("Arial", 9), fg_color="#F1F2F6", text_color=G_TEXT)
+            t_btn.configure(command=lambda e=entry, t=tag: self._quick_add(e, t))
+            t_btn.pack(side="left", padx=2)
+
+        # Complete/Archive Button
+        comp_btn = ctk.CTkButton(card, text="✅ Complete & Archive", fg_color="#27AE60", hover_color="#219150",
+                                 command=lambda t=issue['Ticket ID'], e=entry: self.handle_resolve(t, e.get()))
+        comp_btn.pack(fill="x", padx=10, pady=(0, 10))
+
+    def _quick_add(self, entry, text):
+        curr = entry.get()
+        entry.delete(0, "end")
+        entry.insert(0, f"{curr} {text},".strip())
+
+    def update_status(self, tid, new_status):
+        """Moves a card from Intake to Progress by updating the sheet"""
+        def task():
+            if database.update_ticket_status(tid, new_status):
+                self.after(0, self.load_tickets)
+            else:
+                self.after(0, lambda: self.show_msg("Failed to start repair."))
+        
+        threading.Thread(target=task, daemon=True).start()
 
     def handle_resolve(self, tid, notes):
         if not notes.strip():
@@ -93,13 +133,11 @@ class RepairView(ctk.CTkFrame):
         def task():
             try:
                 if database.archive_resolved_ticket(tid, notes):
-                    msg = f"Ticket {tid} archived to Sheet 4"
-                    self.after(0, lambda m=msg: self.show_msg(m))
+                    self.after(0, lambda: self.show_msg(f"Ticket {tid} resolved!"))
                     self.after(0, self.load_tickets)
                 else:
-                    self.after(0, lambda: self.show_msg("Error during archiving"))
+                    self.after(0, lambda: self.show_msg("Error archiving ticket."))
             except Exception as e:
-                err = str(e)
-                self.after(0, lambda m=err: self.show_msg(f"System Error: {m}"))
+                self.after(0, lambda: self.show_msg(f"System Error: {str(e)}"))
         
         threading.Thread(target=task, daemon=True).start()
