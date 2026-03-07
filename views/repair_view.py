@@ -52,17 +52,27 @@ class RepairView(ctk.CTkFrame):
         threading.Thread(target=fetch, daemon=True).start()
 
     def render(self, data):
-        # Clear both columns before repopulating
+        # QUOTA PROTECTION: Fetch reference data once per render
+        try:
+            inv_data = database.inventory_sheet.get_all_records()
+            arc_data = database.repair_sheet.get_all_records()
+        except Exception as e:
+            print(f"Quota Error during render: {e}")
+            return
+
         for col in [self.col_intake, self.col_progress]:
             for w in col.winfo_children(): w.destroy()
             
         for item in data:
             for issue in item.get('issues', []):
-                status = str(issue.get('Status', '')).upper()
+                # Maintenance Check
+                _, days, is_stale = database.get_maintenance_status(item['Blume ID'], inv_data, arc_data)
                 
-                # Check for Maintenance Flag
-                _, days, is_stale = database.get_maintenance_status(item['Blume ID'])
+                # LOOKUP: Use your new header name "Progress Level"
+                raw_status = issue.get('Progress Level', 'PENDING')
+                status = str(raw_status).upper().strip()
                 
+                # ROUTING
                 if "PROGRESS" in status:
                     self.create_progress_card(self.col_progress, item, issue)
                 else:
@@ -119,7 +129,8 @@ class RepairView(ctk.CTkFrame):
         """Moves a card from Intake to Progress by updating the sheet"""
         def task():
             if database.update_ticket_status(tid, new_status):
-                self.after(0, self.load_tickets)
+                # Wait 1 second before refreshing so Google can update the data
+                self.after(1000, self.load_tickets)
             else:
                 self.after(0, lambda: self.show_msg("Failed to start repair."))
         
@@ -134,7 +145,8 @@ class RepairView(ctk.CTkFrame):
             try:
                 if database.archive_resolved_ticket(tid, notes):
                     self.after(0, lambda: self.show_msg(f"Ticket {tid} resolved!"))
-                    self.after(0, self.load_tickets)
+                    # Wait 1 second before refreshing
+                    self.after(1000, self.load_tickets)
                 else:
                     self.after(0, lambda: self.show_msg("Error archiving ticket."))
             except Exception as e:

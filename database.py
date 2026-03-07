@@ -2,6 +2,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import re
 from datetime import datetime
+import time
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
@@ -32,36 +33,28 @@ def update_last_service(blume_id):
 
 from datetime import datetime
 
-def get_maintenance_status(blume_id):
-    """Calculates if a device is 'Stale' (no activity in 180 days)."""
-    # 1. Get the 'Birth' date from Inventory (Sheet 1)
-    inventory = inventory_sheet.get_all_records()
-    device_info = next((item for item in inventory if str(item['Blume ID']) == str(blume_id)), None)
+def get_maintenance_status(blume_id, inventory_data, archive_data):
+    """Uses provided data lists to check maintenance without calling the API again."""
+    device_info = next((item for item in inventory_data if str(item.get('Blume ID')) == str(blume_id)), None)
     
     if not device_info:
         return "Unknown", 0, False
 
-    # Start with the Onboarding date (Sheet 1)
     last_date_str = device_info.get('Originated Date', '2000-01-01')
     
-    # 2. Check your repair_sheet (Sheet 3) for a more recent repair date
-    # This is where the error was happening!
-    archive_data = repair_sheet.get_all_records() 
+    # Filter the archive data we already fetched
     device_history = [r for r in archive_data if str(r.get('Blume ID')) == str(blume_id)]
     
     if device_history:
-        # Get the most recent Resolved Date
         device_history.sort(key=lambda x: x.get('Resolved Date', '2000-01-01'), reverse=True)
         last_date_str = device_history[0]['Resolved Date']
 
-    # 3. Calculate the gap
     try:
         last_seen = datetime.strptime(last_date_str, "%Y-%m-%d")
         days_since = (datetime.today() - last_seen).days
-        is_stale = days_since > 180
-        return last_date_str, days_since, is_stale
+        return last_date_str, days_since, (days_since > 180)
     except:
-        return "Invalid Date", 0, False
+        return "Invalid", 0, False
 
 # --- CORE FUNCTIONS (RESTORED & UPDATED) ---
 
@@ -71,11 +64,12 @@ def add_device(blume_id, item, serial, date):
     inventory_sheet.append_row([blume_id, item, serial, date, date])
 
 def report_fault(blume_id, status, notes):
-    """Generates a globally unique ID and logs the fault to Sheet 2."""
+    """Logs the fault to Sheet 2 with 'PENDING' in the Progress Level column."""
     try:
         new_tid = get_next_ticket_id()
         issue_date = datetime.today().strftime("%Y-%m-%d")
-        new_row = [new_tid, blume_id, issue_date, status, notes]
+        # Column 6 is now explicitly 'PENDING'
+        new_row = [new_tid, blume_id, issue_date, status, notes, "PENDING"]
         fault_sheet.append_row(new_row)
         return new_tid
     except Exception as e:
@@ -153,7 +147,7 @@ def search_device(query_value):
         bid = str(item.get('Blume ID', ''))
         item_faults = [f for f in all_faults if str(f.get('Blume ID')) == bid]
         formatted_faults = [{"Ticket ID": f.get('Ticket ID', 'N/A'), "Issue Date": f.get('Issue Date', 'N/A'),
-                             "Status": f.get('Device Status', 'N/A'), "Notes": f.get('Issue Notes', '')} for f in item_faults]
+                             "Status": f.get('Device Status', 'N/A'), "Notes": f.get('Issue Notes', ''),"Progress Level": f.get('Progress Level', 'PENDING')} for f in item_faults]
 
         if query_lower == bid.lower() or any(query_lower in str(f["Status"]).lower() for f in formatted_faults):
             results.append({
@@ -251,18 +245,49 @@ def get_recent_activity(limit=8):
         return []
     
 def update_ticket_status(ticket_id, new_status):
-    """Moves card from Intake to Progress in Kanban."""
+    """Updates 'Progress Level' (Column 6)."""
     try:
         records = fault_sheet.get_all_records()
         for i, row in enumerate(records):
             if str(row.get('Ticket ID')) == str(ticket_id):
-                # We update Column 3 (Status) in fault_sheet (Sheet 2)
-                # i+2 accounts for 0-indexing and the Header row
-                fault_sheet.update_cell(i + 2, 3, new_status)
+                # Update Column 6 (Progress Level)
+                fault_sheet.update_cell(i + 2, 6, new_status) 
+                time.sleep(1) # Quota safety
                 return True
         return False
     except Exception as e:
         print(f"Update Error: {e}")
+        return False
+    
+def archive_resolved_ticket(ticket_id, tech_notes):
+    """Moves ticket to Sheet 4 and cleans up Sheet 2."""
+    try:
+        rows = fault_sheet.get_all_values()
+        target_row = None
+        row_index = -1
+        
+        for i, row in enumerate(rows):
+            if row[0] == ticket_id:
+                target_row = row
+                row_index = i + 1
+                break
+        
+        if not target_row: return False
+
+        resolved_date = datetime.today().strftime("%Y-%m-%d")
+        # Structure for Sheet 4: Ticket ID, Blume ID, Date, Status, Notes, Progress, Tech Notes, Resolved Date
+        new_row = [
+            target_row[0], target_row[1], target_row[2], 
+            target_row[3], target_row[4], "RESOLVED",    
+            tech_notes, resolved_date  
+        ]
+
+        repair_sheet.append_row(new_row)
+        fault_sheet.delete_rows(row_index)
+        update_last_service(target_row[1]) 
+        return True
+    except Exception as e:
+        print(f"Archive Error: {e}")
         return False
     
 def get_system_insights():
