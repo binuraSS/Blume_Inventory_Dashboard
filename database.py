@@ -138,23 +138,31 @@ def get_next_ticket_id():
         print(f"ID Error: {e}"); return f"{prefix}99999"
 
 def search_device(query_value):
-    all_items = inventory_sheet.get_all_records()
-    all_faults = fault_sheet.get_all_records()
+    # Use our new safe fetcher to avoid 'Connection Aborted'
+    all_items = safe_get_records(inventory_sheet)
+    all_faults = safe_get_records(fault_sheet)
+    
     results = []
     query_lower = str(query_value).lower().strip()
 
     for item in all_items:
         bid = str(item.get('Blume ID', ''))
+        # Filter faults for this specific device
         item_faults = [f for f in all_faults if str(f.get('Blume ID')) == bid]
-        formatted_faults = [{"Ticket ID": f.get('Ticket ID', 'N/A'), "Issue Date": f.get('Issue Date', 'N/A'),
-                             "Status": f.get('Device Status', 'N/A'), "Notes": f.get('Issue Notes', ''),"Progress Level": f.get('Progress Level', 'PENDING')} for f in item_faults]
+        
+        formatted_faults = [{
+            "Ticket ID": f.get('Ticket ID', 'N/A'),
+            "Status": f.get('Device Status', 'N/A'),
+            "Notes": f.get('Issue Notes', ''),
+            "Progress Level": f.get('Progress Level', 'PENDING') # Match new Column 6
+        } for f in item_faults]
 
-        if query_lower == bid.lower() or any(query_lower in str(f["Status"]).lower() for f in formatted_faults):
+        # Search by ID or Status
+        if query_lower == "" or query_lower in bid.lower() or any(query_lower in str(f["Status"]).lower() for f in formatted_faults):
             results.append({
                 "Blume ID": bid,
                 "Item Category": item.get('Item Category', 'Unknown'),
                 "Serial Number": item.get('Serial Number', 'N/A'),
-                "Originated Date": item.get('Originated Date', 'N/A'),
                 "Last Service": item.get('Last Service', 'N/A'),
                 "issues": formatted_faults 
             })
@@ -314,3 +322,13 @@ def get_system_insights():
     except Exception as e:
         print(f"Detailed Insights Error: {e}")
         return []
+    
+def safe_get_records(worksheet):
+    """Attempt to fetch records with a retry if Google drops the connection."""
+    for attempt in range(3):
+        try:
+            return worksheet.get_all_records()
+        except Exception as e:
+            print(f"Connection attempt {attempt+1} failed: {e}")
+            time.sleep(2) # Wait 2 seconds before trying again
+    return []

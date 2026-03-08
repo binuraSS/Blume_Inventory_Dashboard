@@ -69,7 +69,7 @@ class RepairView(ctk.CTkFrame):
                 _, days, is_stale = database.get_maintenance_status(item['Blume ID'], inv_data, arc_data)
                 
                 # LOOKUP: Use your new header name "Progress Level"
-                raw_status = issue.get('Progress Level', 'PENDING')
+                raw_status = issue.get('Progress Level', 'Pending')
                 status = str(raw_status).upper().strip()
                 
                 # ROUTING
