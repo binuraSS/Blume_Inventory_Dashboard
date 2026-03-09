@@ -1,7 +1,8 @@
 import customtkinter as ctk
 import threading
-import database
 from styles import *
+# We only need report_fault for this view
+from data.repairs import report_fault
 
 class FaultReportView(ctk.CTkFrame):
     def __init__(self, master, show_msg_callback):
@@ -23,10 +24,27 @@ class FaultReportView(ctk.CTkFrame):
         btn.pack(pady=40)
 
     def handle_submit(self):
+        # Gather data from UI before starting thread
+        blume_id = self.bid.get()
+        status_val = self.status.get()
+        notes_val = self.notes.get("1.0", "end-1c")
+
         def task():
             try:
-                tid = database.report_fault(self.bid.get(), self.status.get(), self.notes.get("1.0", "end-1c"))
+                # FIX: Call the imported function directly without 'database.'
+                tid = report_fault(blume_id, status_val, notes_val)
+                
+                # Update UI on main thread
                 self.after(0, lambda: self.show_msg(f"Fault Logged: {tid}"))
+                self.after(0, self._clear_inputs)
             except Exception as e:
-                self.after(0, lambda err=e: self.show_msg(f"Error: {str(err)}"))
+                # FIX: Store error in a local variable so the lambda can see it
+                error_msg = str(e)
+                self.after(0, lambda err=error_msg: self.show_msg(f"Error: {err}"))
+        
         threading.Thread(target=task, daemon=True).start()
+
+    def _clear_inputs(self):
+        """Reset the form after successful submission."""
+        self.bid.delete(0, 'end')
+        self.notes.delete("1.0", 'end')

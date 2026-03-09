@@ -1,7 +1,7 @@
-import customtkinter as ctk
-from styles import *
 # Ensure these class names match exactly what is in your views/__init__.py
+import customtkinter as ctk
 from views import AddDeviceView, FaultReportView, SearchView, RepairView, DashboardView
+from styles import *
 
 class BlumeApp(ctk.CTk):
     def __init__(self):

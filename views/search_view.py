@@ -1,124 +1,169 @@
 import customtkinter as ctk
-import database
+import threading
 from styles import *
+from data.inventory import search_device, get_maintenance_status, get_device_history, mark_as_inspected
+from data.client import inventory_sheet, repair_sheet, safe_get_records
 
 class SearchView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color=G_BG, corner_radius=12, border_width=1, border_color=G_BORDER)
+        
+        # Main Padding Container
         p = ctk.CTkFrame(self, fg_color="transparent")
         p.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Search Bar
+        # --- Search Bar Area ---
         bar = ctk.CTkFrame(p, fg_color="transparent")
         bar.pack(fill="x", pady=(0, 20))
         
-        self.entry = ctk.CTkEntry(bar, placeholder_text="Search Blume ID or Status...", width=400, height=40)
+        self.entry = ctk.CTkEntry(
+            bar, 
+            placeholder_text="Search Blume ID, Serial, or Status...", 
+            width=400, 
+            height=45,
+            border_width=2,
+            corner_radius=8
+        )
         self.entry.pack(side="left", padx=10)
         self.entry.bind("<Return>", lambda e: self.run_search())
         
-        btn = ctk.CTkButton(bar, text="Search", width=100, command=self.run_search)
-        apply_material_button(btn, "primary")
-        btn.pack(side="left")
+        self.search_btn = ctk.CTkButton(
+            bar, 
+            text="Search", 
+            width=120, 
+            height=45,
+            command=self.run_search
+        )
+        apply_material_button(self.search_btn, "primary")
+        self.search_btn.pack(side="left")
 
-        # Results Area
-        self.res_area = ctk.CTkScrollableFrame(p, fg_color=G_WINDOW_BG, corner_radius=8)
+        # --- Results Scrollable Area ---
+        self.res_area = ctk.CTkScrollableFrame(p, fg_color=G_WINDOW_BG, corner_radius=12)
         self.res_area.pack(fill="both", expand=True)
 
     def run_search(self):
-        for w in self.res_area.winfo_children(): w.destroy()
+        """Fetches data on a background thread to prevent UI freezing."""
         query = self.entry.get().strip()
-        if not query: return
         
-        # QUOTA FIX: Fetch reference data once for the whole search result set
-        try:
-            inv_data = database.inventory_sheet.get_all_records()
-            arc_data = database.repair_sheet.get_all_records()
-            results = database.search_device(query)
-            
-            for item in results:
-                # Pass the prefetched data into the card creation
-                self.create_device_result(item, inv_data, arc_data)
-        except Exception as e:
-            print(f"Search View Error: {e}")
+        for w in self.res_area.winfo_children():
+            w.destroy()
+        
+        self.search_btn.configure(state="disabled", text="Searching...")
+
+        def task():
+            try:
+                # 1. Fetch reference data
+                inv_data = safe_get_records(inventory_sheet)
+                arc_data = safe_get_records(repair_sheet)
+                
+                # 2. Perform search
+                results = search_device(query)
+                
+                # 3. Update UI
+                self.after(0, lambda: self._render_results(results, inv_data, arc_data))
+            except Exception as e:
+                print(f"Search Engine Error: {e}")
+                self.after(0, lambda: self.search_btn.configure(state="normal", text="Search"))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _render_results(self, results, inv_data, arc_data):
+        self.search_btn.configure(state="normal", text="Search")
+        
+        if not results:
+            ctk.CTkLabel(self.res_area, text="No matching devices found.", font=FONT_BODY).pack(pady=40)
+            return
+
+        for item in results:
+            self.create_device_result(item, inv_data, arc_data)
 
     def create_device_result(self, item, inv_data, arc_data):
+        """Material Design Card with Detailed Timeline."""
         bid = item['Blume ID']
+        last_date, days, is_overdue = get_maintenance_status(bid, inv_data, arc_data)
         
-        # 1. Check Maintenance Status (Updated to match new database.py signature)
-        last_date, days, is_overdue = database.get_maintenance_status(bid, inv_data, arc_data)
-        
-        # Logic for banner display
-        status_text = f"Maintenance Overdue: {days} Days" if is_overdue else "Healthy"
-        status_color = "#FADBD8" if is_overdue else "#D5F5E3" # Light Red vs Light Green
-
         card = ctk.CTkFrame(self.res_area, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
         card.pack(fill="x", pady=10, padx=15)
         
-        # --- MAINTENANCE BANNER (Only shows if Overdue) ---
+        # --- HEADER SECTION ---
+        header_area = ctk.CTkFrame(card, fg_color="transparent")
+        header_area.pack(fill="x", padx=20, pady=(20, 10))
+
+        # Primary Topic: ID
+        ctk.CTkLabel(header_area, text=bid, font=FONT_H2, text_color=G_BLUE).pack(side="left")
+
+        # Sub-Topics: Meta Data
+        meta_frame = ctk.CTkFrame(header_area, fg_color="transparent")
+        meta_frame.pack(side="left", padx=30)
+        
+        ctk.CTkLabel(meta_frame, text=f"Category: {item.get('Item Category', 'N/A')}", 
+                     font=FONT_LABEL, text_color=G_SUBTEXT).pack(anchor="w")
+        ctk.CTkLabel(meta_frame, text=f"Serial: {item.get('Serial Number', 'N/A')}", 
+                     font=FONT_LABEL, text_color=G_SUBTEXT).pack(anchor="w")
+
         if is_overdue:
-            banner = ctk.CTkFrame(card, fg_color="#FADBD8", height=35, corner_radius=12)
-            banner.pack(fill="x", padx=10, pady=(10, 0))
-            ctk.CTkLabel(banner, text=f"⚠️ {status_text}", text_color="#7B241C", font=FONT_LABEL_BOLD).pack(pady=5)
+            inspect_btn = ctk.CTkButton(header_area, text="Mark Inspected", width=130, height=35,
+                                        command=lambda b=bid: self._handle_inspect(b))
+            apply_material_button(inspect_btn, "primary")
+            inspect_btn.pack(side="right")
 
-        # Header Section
-        header = ctk.CTkFrame(card, fg_color="transparent")
-        header.pack(fill="x", padx=20, pady=15)
-        
-        self._add_header_text(header, "Blume ID", bid)
-        ctk.CTkLabel(header, text=f"  ({item.get('Item Category', 'Unknown')})", font=FONT_BODY, text_color=G_SUBTEXT).pack(side="left")
-        
-        # Quick Action Button (Mark as Inspected)
+        # --- ALERTS & FAULTS ---
         if is_overdue:
-            ins_btn = ctk.CTkButton(header, text="Mark as Inspected", width=140, height=30,
-                                     command=lambda b=bid: self.handle_quick_inspect(b))
-            apply_material_button(ins_btn, "secondary")
-            ins_btn.pack(side="right", padx=10)
+            banner = ctk.CTkFrame(card, fg_color="#FFF9E6", corner_radius=6)
+            banner.pack(fill="x", padx=20, pady=(0, 15))
+            ctk.CTkLabel(banner, text=f"⚠️ ATTENTION: {days} days since last inspection", 
+                         font=FONT_LABEL_BOLD, text_color="#856404").pack(pady=6)
 
-        # Device Info Row
-        info_row = ctk.CTkFrame(card, fg_color="transparent")
-        info_row.pack(fill="x", padx=20, pady=(0, 10))
-        
-        # Show Last Service Date in the info row
-        last_s = item.get('Last Service', 'Never')
-        ctk.CTkLabel(info_row, text=f"Serial: {item.get('Serial Number', 'N/A')}  |  Last Service: {last_s}", 
-                     font=FONT_LABEL, text_color=G_SUBTEXT).pack(side="left")
+        if item.get('issues'):
+            fault_container = ctk.CTkFrame(card, fg_color="transparent")
+            fault_container.pack(fill="x", padx=20, pady=(0, 15))
+            
+            ctk.CTkLabel(fault_container, text="ACTIVE FAULTS", font=("Arial", 10, "bold"), text_color=G_RED).pack(anchor="w")
+            
+            for issue in item['issues']:
+                row = ctk.CTkFrame(fault_container, fg_color="#FDF2F2", corner_radius=6)
+                row.pack(fill="x", pady=2)
+                ctk.CTkLabel(row, text=f"[{issue['Ticket ID']}]", font=FONT_BODY_BOLD, text_color=G_RED).pack(side="left", padx=10)
+                ctk.CTkLabel(row, text=f"{issue['Status']} — {issue['Notes']}", font=FONT_BODY, wraplength=550).pack(side="left", pady=8)
 
-        # --- THE TIMELINE SECTION ---
-        ctk.CTkLabel(card, text="Device History & Status Timeline", font=FONT_LABEL_BOLD, text_color=G_BLUE).pack(anchor="w", padx=20, pady=(10, 5))
-        
-        timeline_box = ctk.CTkFrame(card, fg_color="#F8F9FA", corner_radius=8, border_width=1, border_color="#E0E0E0")
-        timeline_box.pack(fill="x", padx=20, pady=(0, 20))
+        # --- DETAILED TIMELINE ---
+        ctk.CTkFrame(card, height=1, fg_color=G_BORDER).pack(fill="x", padx=20, pady=5)
 
-        # Note: get_device_history still hits the API internally, 
-        # but only once per device card created.
-        history = database.get_device_history(bid)
-        if not history:
-            ctk.CTkLabel(timeline_box, text="No repair history found.", font=FONT_LABEL).pack(pady=10)
-        else:
-            for entry in history:
-                self._add_timeline_node(timeline_box, entry)
+        history_box = ctk.CTkFrame(card, fg_color="transparent")
+        history_box.pack(fill="x", padx=20, pady=(10, 20))
+        
+        ctk.CTkLabel(history_box, text="DEVICE TIMELINE", font=("Arial", 10, "bold"), text_color=G_SUBTEXT).pack(anchor="w", pady=(0, 10))
 
-    def handle_quick_inspect(self, bid):
-        """Resets the clock and refreshes the search view."""
-        if database.mark_as_inspected(bid):
-            self.after(500, self.run_search) # Short delay to let Google update
+        history = get_device_history(bid)
+        for entry in history[:5]:
+            h_row = ctk.CTkFrame(history_box, fg_color="transparent")
+            h_row.pack(fill="x", pady=4)
+            
+            # Header line for the event
+            top_line = ctk.CTkFrame(h_row, fg_color="transparent")
+            top_line.pack(fill="x")
+            
+            ctk.CTkLabel(top_line, text=entry['date'], font=("Arial", 11, "bold"), text_color=G_SUBTEXT, width=90).pack(side="left")
+            ctk.CTkLabel(top_line, text=f"• {entry['event']}", font=("Arial", 12, "bold"), text_color=entry.get('color', G_TEXT)).pack(side="left", padx=5)
+            
+            # Detail line (The "Point" of the entry)
+            if entry.get('details'):
+                detail_lbl = ctk.CTkLabel(
+                    h_row, 
+                    text=f"      {entry['details']}", 
+                    font=FONT_LABEL, 
+                    text_color=G_TEXT, 
+                    wraplength=600, 
+                    justify="left"
+                )
+                detail_lbl.pack(anchor="w", padx=10)
 
-    def _add_timeline_node(self, parent, entry):
-        node = ctk.CTkFrame(parent, fg_color="transparent")
-        node.pack(fill="x", padx=15, pady=5)
+    def _handle_inspect(self, bid):
+        def task():
+            try:
+                if mark_as_inspected(bid):
+                    self.after(0, self.run_search)
+            except Exception as e:
+                print(f"Inspection Update Error: {e}")
         
-        indicator = ctk.CTkLabel(node, text="●", font=("Arial", 18), text_color=entry.get('color', G_BLUE))
-        indicator.pack(side="left", anchor="n", pady=2)
-        
-        details = ctk.CTkFrame(node, fg_color="transparent")
-        details.pack(side="left", fill="x", expand=True, padx=10)
-        
-        top_line = f"{entry['date']} — {entry['event']}"
-        ctk.CTkLabel(details, text=top_line, font=FONT_BODY_BOLD, text_color=G_TEXT).pack(anchor="w")
-        
-        if entry.get('notes'):
-            ctk.CTkLabel(details, text=entry['notes'], font=FONT_LABEL, text_color=G_SUBTEXT, wraplength=500, justify="left").pack(anchor="w")
-
-    def _add_header_text(self, parent, label, val):
-        ctk.CTkLabel(parent, text=f"{label}: ", font=("Segoe UI", 18), text_color=G_SUBTEXT).pack(side="left")
-        ctk.CTkLabel(parent, text=val, font=("Segoe UI", 18, "bold"), text_color=G_TEXT).pack(side="left")
+        threading.Thread(target=task, daemon=True).start()

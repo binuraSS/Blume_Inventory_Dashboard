@@ -1,7 +1,10 @@
 import customtkinter as ctk
-import database
 import threading
 from styles import *
+# NEW IMPORTS: Specifically from their new locations
+from data.repairs import archive_resolved_ticket, update_ticket_status
+from data.inventory import search_device, get_maintenance_status
+from data.client import inventory_sheet, repair_sheet, safe_get_records
 
 class RepairView(ctk.CTkFrame):
     def __init__(self, master, show_msg_callback):
@@ -43,19 +46,20 @@ class RepairView(ctk.CTkFrame):
     def load_tickets(self):
         def fetch():
             try:
-                # Searching with empty string returns all devices with active issues
-                data = database.search_device("") 
+                # FIX: Call search_device directly
+                data = search_device("") 
                 self.after(0, lambda d=data: self.render(d))
             except Exception as e:
-                self.after(0, lambda: self.show_msg(f"Fetch Error: {str(e)}"))
+                error_message = str(e)
+                self.after(0, lambda m=error_message: self.show_msg(f"Fetch Error: {m}"))
                 
         threading.Thread(target=fetch, daemon=True).start()
 
     def render(self, data):
-        # QUOTA PROTECTION: Fetch reference data once per render
+        # FIX: Access sheets directly from data.client imports
         try:
-            inv_data = database.inventory_sheet.get_all_records()
-            arc_data = database.repair_sheet.get_all_records()
+            inv_data = safe_get_records(inventory_sheet)
+            arc_data = safe_get_records(repair_sheet)
         except Exception as e:
             print(f"Quota Error during render: {e}")
             return
@@ -65,14 +69,12 @@ class RepairView(ctk.CTkFrame):
             
         for item in data:
             for issue in item.get('issues', []):
-                # Maintenance Check
-                _, days, is_stale = database.get_maintenance_status(item['Blume ID'], inv_data, arc_data)
+                # FIX: Call get_maintenance_status directly
+                _, days, is_stale = get_maintenance_status(item['Blume ID'], inv_data, arc_data)
                 
-                # LOOKUP: Use your new header name "Progress Level"
-                raw_status = issue.get('Progress Level', 'Pending')
+                raw_status = issue.get('Progress Level', 'PENDING')
                 status = str(raw_status).upper().strip()
                 
-                # ROUTING
                 if "PROGRESS" in status:
                     self.create_progress_card(self.col_progress, item, issue)
                 else:
@@ -82,7 +84,6 @@ class RepairView(ctk.CTkFrame):
         card = ctk.CTkFrame(parent, fg_color="white", corner_radius=8, border_width=1, border_color="#E0E0E0")
         card.pack(fill="x", pady=6, padx=5)
 
-        # Maintenance Alert Banner
         if is_stale:
             banner = ctk.CTkFrame(card, fg_color="#FFF3CD", height=26, corner_radius=4)
             banner.pack(fill="x", padx=8, pady=8)
@@ -103,11 +104,9 @@ class RepairView(ctk.CTkFrame):
 
         ctk.CTkLabel(card, text=f"REPAIRING: {item['Blume ID']}", font=FONT_BODY_BOLD).pack(anchor="w", padx=12, pady=(10,0))
         
-        # Tech Entry Box
         entry = ctk.CTkEntry(card, placeholder_text="Describe the fix...", height=30, font=FONT_LABEL)
         entry.pack(fill="x", padx=10, pady=10)
 
-        # Quick Action Chips
         tags_f = ctk.CTkFrame(card, fg_color="transparent")
         tags_f.pack(fill="x", padx=10, pady=(0, 10))
         for tag in ["Cleaned", "Reset", "Fixed", "Screen"]:
@@ -115,7 +114,6 @@ class RepairView(ctk.CTkFrame):
             t_btn.configure(command=lambda e=entry, t=tag: self._quick_add(e, t))
             t_btn.pack(side="left", padx=2)
 
-        # Complete/Archive Button
         comp_btn = ctk.CTkButton(card, text="✅ Complete & Archive", fg_color="#27AE60", hover_color="#219150",
                                  command=lambda t=issue['Ticket ID'], e=entry: self.handle_resolve(t, e.get()))
         comp_btn.pack(fill="x", padx=10, pady=(0, 10))
@@ -126,10 +124,9 @@ class RepairView(ctk.CTkFrame):
         entry.insert(0, f"{curr} {text},".strip())
 
     def update_status(self, tid, new_status):
-        """Moves a card from Intake to Progress by updating the sheet"""
         def task():
-            if database.update_ticket_status(tid, new_status):
-                # Wait 1 second before refreshing so Google can update the data
+            # FIX: Call update_ticket_status directly
+            if update_ticket_status(tid, new_status):
                 self.after(1000, self.load_tickets)
             else:
                 self.after(0, lambda: self.show_msg("Failed to start repair."))
@@ -143,13 +140,13 @@ class RepairView(ctk.CTkFrame):
 
         def task():
             try:
-                if database.archive_resolved_ticket(tid, notes):
+                # FIX: Call archive_resolved_ticket directly
+                if archive_resolved_ticket(tid, notes):
                     self.after(0, lambda: self.show_msg(f"Ticket {tid} resolved!"))
-                    # Wait 1 second before refreshing
                     self.after(1000, self.load_tickets)
                 else:
                     self.after(0, lambda: self.show_msg("Error archiving ticket."))
             except Exception as e:
-                self.after(0, lambda: self.show_msg(f"System Error: {str(e)}"))
+                self.after(0, lambda m=str(e): self.show_msg(f"System Error: {m}"))
         
         threading.Thread(target=task, daemon=True).start()
