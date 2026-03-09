@@ -32,20 +32,22 @@ def get_fleet_stats():
         print(f"Stats Error: {e}")
         return {"broken": 0, "overdue": 0, "healthy": 0}
 
+    
 def get_system_insights():
-    """Returns a list of (Category, Count) for the visual bars."""
+    """Returns a list of (Issue Type, Count) for the visual bars."""
     try:
         faults = safe_get_records(fault_sheet)
-        inventory = safe_get_records(inventory_sheet)
         
-        # Map IDs to Categories
-        id_map = {str(item['Blume ID']): item['Item Category'] for item in inventory}
-        categories = [id_map.get(str(f['Blume ID']), "Unknown") for f in faults]
+        # We look at the 'Device Status' column from the Fault Sheet 
+        # (This contains the "Physical Damage", "Tracking Error", etc.)
+        issues = [str(f.get('Device Status', 'Unknown Issue')) for f in faults]
         
-        return Counter(categories).most_common(5)
-    except:
+        # This returns the counts of specific issues
+        return Counter(issues).most_common(5)
+    except Exception as e:
+        print(f"Insights Error: {e}")
         return []
-
+    
 def get_recent_activity():
     """Combines latest faults and repairs for the live feed."""
     try:

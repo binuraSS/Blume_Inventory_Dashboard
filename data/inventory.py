@@ -58,21 +58,6 @@ def search_device(query_value):
 
 def get_device_history(blume_id):
     history = []
-    inv = safe_get_records(inventory_sheet)
-    for item in inv:
-        if str(item.get('Blume ID')) == str(blume_id):
-            history.append({"date": item.get('Originated Date'), "event": "Created", "color": "#3498DB"})
-    
-    resolved = safe_get_records(repair_sheet)
-    for r in resolved:
-        if str(r.get('Blume ID')) == str(blume_id):
-            history.append({"date": r.get('Resolved Date'), "event": "REPAIR COMPLETE", "notes": r.get('Tech Notes'), "color": "#27AE60"})
-    
-    history.sort(key=lambda x: x['date'], reverse=True)
-    return history
-
-def get_device_history(blume_id):
-    history = []
     
     inv = safe_get_records(inventory_sheet)
     active_faults = safe_get_records(fault_sheet)
@@ -83,7 +68,7 @@ def get_device_history(blume_id):
         if str(item.get('Blume ID')) == str(blume_id):
             history.append({
                 "date": item.get('Originated Date'), 
-                "event": "DEVICE REGISTERED", 
+                "event": "Device Registered", 
                 "details": f"Initial Setup - SN: {item.get('Serial Number')}",
                 "color": "#3498DB"
             })
@@ -93,7 +78,7 @@ def get_device_history(blume_id):
         if str(f.get('Blume ID')) == str(blume_id):
             history.append({
                 "date": f.get('Issue Date'), 
-                "event": f"ACTIVE FAULT: {f.get('Device Status')}", 
+                "event": f"Active Fault: {f.get('Device Status')}", 
                 "details": f"Reported Error: {f.get('Issue Notes')}",
                 "color": "#E74C3C" 
             })
@@ -107,8 +92,8 @@ def get_device_history(blume_id):
             
             history.append({
                 "date": r.get('Resolved Date'), 
-                "event": "REPAIR COMPLETE", 
-                "details": f"REPORTED ERROR: {reported_as}\n      TECH FIX: {fix_notes}",
+                "event": "Repair Complete", 
+                "details": f"Reported Error: {reported_as}\n      Tech Fix: {fix_notes}",
                 "color": "#27AE60" 
             })
     

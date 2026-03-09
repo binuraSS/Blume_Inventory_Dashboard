@@ -10,7 +10,7 @@ class DashboardView(ctk.CTkFrame):
         # --- Header & Score ---
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        ctk.CTkLabel(header, text="Fleet Overview", font=FONT_H1).pack(side="left")
+        ctk.CTkLabel(header, text="Fleet Overview", font=FONT_H1, text_color="black").pack(side="left")
         self.score_label = ctk.CTkLabel(header, text="Health: --%", font=FONT_H2, text_color=G_BLUE)
         self.score_label.pack(side="right")
 
@@ -19,72 +19,123 @@ class DashboardView(ctk.CTkFrame):
         self.card_frame.pack(fill="x")
         self.cards = {}
         self._create_card("Active Faults", G_RED, "broken")
-        self._create_card("Maintenance Due", G_YELLOW, "overdue")
-        self._create_card("Healthy Fleet", G_GREEN, "healthy")
+        self._create_card("Maintenance Due", "#D97706", "overdue") 
+        self._create_card("Healthy Fleet", "#059669", "healthy")
 
-        # --- Insights & Feed Columns ---
+        # --- Bottom Content Area ---
         bottom_row = ctk.CTkFrame(self, fg_color="transparent")
         bottom_row.pack(fill="both", expand=True, pady=20)
-        bottom_row.grid_columnconfigure(0, weight=2) 
-        bottom_row.grid_columnconfigure(1, weight=1) 
+        bottom_row.grid_columnconfigure(0, weight=3) 
+        bottom_row.grid_columnconfigure(1, weight=2) 
 
-        # Left: Visual Insights
+        # LEFT: Anatomy of Faults
         self.main_content = ctk.CTkFrame(bottom_row, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
         self.main_content.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        ctk.CTkLabel(self.main_content, text="System Insights", font=FONT_LABEL_BOLD).pack(pady=10)
+        
+        ctk.CTkLabel(self.main_content, text="Issue Distribution (Per Category)", 
+                     font=FONT_LABEL_BOLD, text_color="black").pack(pady=(15, 15), padx=25, anchor="w")
+        
+        self.bars_container = ctk.CTkFrame(self.main_content, fg_color="transparent")
+        self.bars_container.pack(fill="both", expand=True, padx=25, pady=(0, 20))
 
-        # Right: Activity Feed
+        # RIGHT: Activity Feed
         self.feed_box = ctk.CTkFrame(bottom_row, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
         self.feed_box.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
-        ctk.CTkLabel(self.feed_box, text="Recent Activity", font=FONT_LABEL_BOLD).pack(pady=10)
-        self.feed_container = ctk.CTkScrollableFrame(self.feed_box, fg_color="transparent", height=300)
-        self.feed_container.pack(fill="both", expand=True, padx=5, pady=5)
+        ctk.CTkLabel(self.feed_box, text="Recent Activity", font=FONT_LABEL_BOLD, text_color="black").pack(pady=10)
+        
+        self.feed_container = ctk.CTkScrollableFrame(self.feed_box, fg_color="transparent")
+        self.feed_container.pack(fill="both", expand=True, padx=10, pady=5)
 
         self.refresh_data()
 
     def _create_card(self, title, color, key):
-        card = ctk.CTkFrame(self.card_frame, fg_color="white", corner_radius=12, border_width=2, border_color=color)
+        card = ctk.CTkFrame(self.card_frame, fg_color="white", corner_radius=12, border_width=1, border_color=G_BORDER)
         card.pack(side="left", fill="both", expand=True, padx=5)
         ctk.CTkLabel(card, text=title, font=FONT_LABEL, text_color=G_SUBTEXT).pack(pady=(15, 0))
-        val = ctk.CTkLabel(card, text="--", font=FONT_PULSE, text_color=color)
-        val.pack(pady=20)
+        val = ctk.CTkLabel(card, text="--", font=("Arial", 32, "bold"), text_color=color)
+        val.pack(pady=(5, 15))
         self.cards[key] = val
 
     def refresh_data(self):
         try:
-            # 1. Update Cards & Score
             stats = get_fleet_stats()
-            for k, v in stats.items():
-                self.cards[k].configure(text=str(v))
+            insights = get_system_insights() 
             
-            total = sum(stats.values())
-            score = int((stats["healthy"] / total) * 100) if total > 0 else 0
+            for k, v in stats.items():
+                if k in self.cards: 
+                    self.cards[k].configure(text=str(v))
+            
+            total_fleet = sum(stats.values())
+            score = int((stats["healthy"] / total_fleet) * 100) if total_fleet > 0 else 0
             self.score_label.configure(text=f"Health: {score}%")
 
-            # 2. Update Progress Bars
-            insights = get_system_insights()
-            for w in self.main_content.winfo_children():
-                if isinstance(w, ctk.CTkFrame): w.destroy()
-            
-            total_issues = sum(count for cat, count in insights)
-            for cat, count in insights:
-                row = ctk.CTkFrame(self.main_content, fg_color="transparent")
-                row.pack(fill="x", padx=20, pady=5)
-                ctk.CTkLabel(row, text=cat, font=FONT_BODY).pack(side="left")
-                
-                pct = (count / total_issues) if total_issues > 0 else 0
-                bar_bg = ctk.CTkFrame(self.main_content, height=8, fg_color="#E0E0E0", corner_radius=4)
-                bar_bg.pack(fill="x", padx=20, pady=(0, 10))
-                ctk.CTkFrame(bar_bg, width=0, height=8, fg_color=G_BLUE, corner_radius=4).place(relwidth=pct, relheight=1)
+            self._render_fault_anatomy(insights)
 
-            # 3. Update Activity Feed
             events = get_recent_activity()
             for w in self.feed_container.winfo_children(): w.destroy()
             for e in events:
-                line = ctk.CTkFrame(self.feed_container, fg_color="#F8F9FA", corner_radius=6)
-                line.pack(fill="x", pady=2)
-                ctk.CTkLabel(line, text="●", text_color=e['color']).pack(side="left", padx=5)
-                ctk.CTkLabel(line, text=f"{e['bid']}: {e['event']}", font=FONT_BODY).pack(side="left")
+                row = ctk.CTkFrame(self.feed_container, fg_color="#F8F9FA", corner_radius=8)
+                row.pack(fill="x", pady=3, padx=2)
+                ctk.CTkFrame(row, width=6, height=6, corner_radius=3, fg_color=e.get('color', G_BLUE)).pack(side="left", padx=10)
+                ctk.CTkLabel(row, text=f"{e['bid']}: {e['event']}", font=("Arial", 11), text_color="black").pack(side="left", pady=8)
 
         except Exception as e:
             print(f"Refresh Error: {e}")
+
+    def _render_fault_anatomy(self, insights):
+        for w in self.bars_container.winfo_children(): w.destroy()
+        
+        total_issues = sum(count for label, count in insights)
+        if total_issues == 0:
+            ctk.CTkLabel(self.bars_container, text="All systems clear.", font=("Arial", 12), text_color=G_SUBTEXT).pack(pady=40)
+            return
+
+        bar_container = ctk.CTkFrame(self.bars_container, height=28, fg_color="#F1F5F9", corner_radius=14)
+        bar_container.pack(fill="x", pady=(10, 25))
+        
+        # Color Map using your exact preferred phrasing
+        issue_colors = {
+            "Physical damage": G_RED,
+            "Tracking error": "#8B5CF6",
+            "Software Error": "#F59E0B"
+        }
+
+        curr_x = 0
+        for label, count in insights:
+            pct = count / total_issues
+            # Convert to lowercase just for the 'check', not for the 'display'
+            check_label = str(label).lower().strip()
+
+            # Default to Blue
+            color = G_BLUE
+            
+            # Use lowercase checks to ensure we catch variations in the Sheet data
+            if "physical damage" in check_label: 
+                color = issue_colors["Physical damage"]
+            elif "tracking error" in check_label: 
+                color = issue_colors["Tracking error"]
+            elif "software error" in check_label: 
+                color = issue_colors["Software Error"]
+
+            seg = ctk.CTkFrame(bar_container, fg_color=color, corner_radius=0)
+            seg.place(relx=curr_x, rely=0, relwidth=pct, relheight=1)
+            curr_x += pct
+
+        # Legend
+        ctk.CTkLabel(self.bars_container, text="Detailed Breakdown", font=("Arial", 10, "bold"), text_color=G_SUBTEXT).pack(anchor="w", padx=5, pady=(0, 10))
+
+        for label, count in insights:
+            row = ctk.CTkFrame(self.bars_container, fg_color="transparent")
+            row.pack(fill="x", pady=4)
+            
+            check_label = str(label).lower().strip()
+            dot_color = G_BLUE
+            if "physical damage" in check_label: dot_color = issue_colors["Physical damage"]
+            elif "tracking error" in check_label: dot_color = issue_colors["Tracking error"]
+            elif "software error" in check_label: dot_color = issue_colors["Software Error"]
+
+            ctk.CTkFrame(row, width=10, height=10, corner_radius=5, fg_color=dot_color).pack(side="left", padx=(5, 10))
+            
+            # This uses the 'label' directly from your data, preserving your exact casing
+            ctk.CTkLabel(row, text=label, font=("Arial", 12, "bold"), text_color="black").pack(side="left")
+            ctk.CTkLabel(row, text=f"{count} Units", font=("Arial", 11), text_color=G_SUBTEXT).pack(side="right")
