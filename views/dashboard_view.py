@@ -10,7 +10,7 @@ class DashboardView(ctk.CTkFrame):
       # --- 1. Header & Score (No changes here) ---
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        ctk.CTkLabel(header, text="Fleet Overview", font=FONT_H1, text_color="black").pack(side="left")
+        ctk.CTkLabel(header, text="Fleet Overview", font=FONT_H1, text_color= G_TEXT).pack(side="left")
         self.score_label = ctk.CTkLabel(header, text="Health: --%", font=FONT_H2, text_color=G_BLUE)
         self.score_label.pack(side="right")
 

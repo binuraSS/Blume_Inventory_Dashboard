@@ -6,11 +6,23 @@ from data.inventory import add_device
 
 class AddDeviceView(ctk.CTkFrame):
     def __init__(self, master, show_msg_callback):
-        super().__init__(master, fg_color=G_BG, corner_radius=12, border_width=1, border_color=G_BORDER)
+        # Match the window background
+        super().__init__(master, fg_color=G_WINDOW_BG, corner_radius=0)
         self.show_msg = show_msg_callback
         
-        container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(pady=60, expand=True)
+        # --- 1. Page Header ---
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", pady=(20, 10), padx=30)
+        
+        ctk.CTkLabel(header, text="Add New Resource", font=FONT_H1, text_color=G_TEXT).pack(side="left")
+
+        # --- 2. Form Card ---
+        # Centering the form inside a Material-style card
+        card = ctk.CTkFrame(self, fg_color=G_BG, corner_radius=12, border_width=1, border_color=G_BORDER)
+        card.pack(pady=40, padx=30)
+
+        container = ctk.CTkFrame(card, fg_color="transparent")
+        container.pack(padx=60, pady=40)
 
         self.bid = create_material_input(container, "Blume ID", "B-1234")
         self.cat = create_material_dropdown(container, "Category", ["VR Headset", "Battery Pack", "Remote"])

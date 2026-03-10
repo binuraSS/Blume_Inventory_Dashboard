@@ -10,9 +10,9 @@ class RoutineCheckView(ctk.CTkFrame):
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        ctk.CTkLabel(header, text="Routine Maintenance", font=FONT_H1, text_color="black").pack(side="left")
+        ctk.CTkLabel(header, text="Routine Maintenance", font=FONT_H1, text_color=G_TEXT).pack(side="left")
         
-        ctk.CTkButton(header, text="Refresh List", command=self.refresh, 
+        ctk.CTkButton(header, text="Refresh List", text_color=G_BUTTON_TEXT, command=self.refresh, 
                       fg_color=G_BLUE, width=100).pack(side="right")
 
         # Scrollable Area
@@ -27,13 +27,14 @@ class RoutineCheckView(ctk.CTkFrame):
         
         devices = get_maintenance_list()
         
+
         # Table Headers
         head_row = ctk.CTkFrame(self.scroll, fg_color="#F8F9FA", height=40)
         head_row.pack(fill="x", pady=(0, 10))
-        ctk.CTkLabel(head_row, text="DEVICE ID", font=FONT_LABEL_BOLD, width=100).pack(side="left", padx=20)
-        ctk.CTkLabel(head_row, text="CATEGORY", font=FONT_LABEL_BOLD, width=150).pack(side="left")
-        ctk.CTkLabel(head_row, text="STATUS", font=FONT_LABEL_BOLD, width=120).pack(side="left")
-        ctk.CTkLabel(head_row, text="COUNTDOWN", font=FONT_LABEL_BOLD, width=150).pack(side="left")
+        ctk.CTkLabel(head_row, text="DEVICE ID", font=FONT_LABEL_BOLD, width=100, text_color=G_CONTENTTEXT).pack(side="left", padx=20)
+        ctk.CTkLabel(head_row, text="CATEGORY", font=FONT_LABEL_BOLD, width=150, text_color=G_CONTENTTEXT).pack(side="left")
+        ctk.CTkLabel(head_row, text="STATUS", font=FONT_LABEL_BOLD, width=120, text_color=G_CONTENTTEXT).pack(side="left")
+        ctk.CTkLabel(head_row, text="COUNTDOWN", font=FONT_LABEL_BOLD, width=150, text_color=G_CONTENTTEXT).pack(side="left")
 
         for d in devices:
             row = ctk.CTkFrame(self.scroll, fg_color="transparent")
@@ -41,8 +42,8 @@ class RoutineCheckView(ctk.CTkFrame):
             ctk.CTkFrame(self.scroll, height=1, fg_color=G_BORDER).pack(fill="x", padx=10) # Divider
 
             # ID & Category
-            ctk.CTkLabel(row, text=d['bid'], font=("Arial", 12, "bold"), width=100).pack(side="left", padx=20)
-            ctk.CTkLabel(row, text=d['category'], font=("Arial", 12), width=150, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=d['bid'], font=("Arial", 12, "bold"), text_color=G_CONTENTTEXT, width=100).pack(side="left", padx=20)
+            ctk.CTkLabel(row, text=d['category'], font=("Arial", 12), text_color=G_CONTENTTEXT, width=150, anchor="w").pack(side="left")
             
             # Status Badge
             badge = ctk.CTkFrame(row, fg_color=d['color'], corner_radius=12, width=100, height=24)

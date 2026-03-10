@@ -102,13 +102,14 @@ class RepairView(ctk.CTkFrame):
         card = ctk.CTkFrame(parent, fg_color="white", corner_radius=8, border_width=2, border_color=G_ORANGE)
         card.pack(fill="x", pady=6, padx=5)
 
-        ctk.CTkLabel(card, text=f"REPAIRING: {item['Blume ID']}", font=FONT_BODY_BOLD).pack(anchor="w", padx=12, pady=(10,0))
+        ctk.CTkLabel(card, text=f"Repairing: {item['Blume ID']}", font=FONT_BODY_BOLD).pack(anchor="w", padx=12, pady=(10,0))
         
         entry = ctk.CTkEntry(card, placeholder_text="Describe the fix...", height=30, font=FONT_LABEL)
         entry.pack(fill="x", padx=10, pady=10)
 
         tags_f = ctk.CTkFrame(card, fg_color="transparent")
         tags_f.pack(fill="x", padx=10, pady=(0, 10))
+        # QUICK TAGS: Common fixes to speed up note-taking
         for tag in ["Cleaned", "Reset", "Fixed", "Screen"]:
             t_btn = ctk.CTkButton(tags_f, text=tag, width=45, height=22, font=("Arial", 9), fg_color="#F1F2F6", text_color=G_TEXT)
             t_btn.configure(command=lambda e=entry, t=tag: self._quick_add(e, t))

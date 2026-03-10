@@ -152,7 +152,7 @@ def get_device_history(blume_id):
     for r in resolved_repairs:
         if str(r.get('Blume ID')) == str(blume_id):
             # We combine the Reported Error + The Tech Fix
-            reported_as = r.get('Status', 'Unknown Issue')
+            reported_as = r.get('Device Status', 'Unknown Issue')
             fix_notes = r.get('Tech Notes', 'No notes provided')
             
             history.append({
