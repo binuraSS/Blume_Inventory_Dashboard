@@ -18,9 +18,9 @@ class DashboardView(ctk.CTkFrame):
         self.card_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.card_frame.pack(fill="x")
         self.cards = {}
-        self._create_card("Active Faults", G_RED, "broken")
-        self._create_card("Maintenance Due", "#D97706", "overdue") 
-        self._create_card("Healthy Fleet", "#059669", "healthy")
+        self._create_card("Active Faulty Devices", G_RED, "broken")
+        self._create_card("Devices with Maintenance Due", "#D97706", "overdue") 
+        self._create_card("Active Healthy Fleet", "#059669", "healthy")
 
         # --- Bottom Content Area ---
         bottom_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -57,9 +57,10 @@ class DashboardView(ctk.CTkFrame):
         self.cards[key] = val
 
     def refresh_data(self):
+        # 1. Update the Big Cards (Stats)
         try:
             stats = get_fleet_stats()
-            insights = get_system_insights() 
+            print(f"DEBUG: Dashboard received stats: {stats}") # Check terminal for this!
             
             for k, v in stats.items():
                 if k in self.cards: 
@@ -68,19 +69,28 @@ class DashboardView(ctk.CTkFrame):
             total_fleet = sum(stats.values())
             score = int((stats["healthy"] / total_fleet) * 100) if total_fleet > 0 else 0
             self.score_label.configure(text=f"Health: {score}%")
+        except Exception as e:
+            print(f"Stats Card Error: {e}")
 
+        # 2. Update the Bar Chart (Insights)
+        try:
+            insights = get_system_insights() 
             self._render_fault_anatomy(insights)
+        except Exception as e:
+            print(f"Insights Chart Error: {e}")
 
+        # 3. Update the Activity Feed
+        try:
             events = get_recent_activity()
             for w in self.feed_container.winfo_children(): w.destroy()
             for e in events:
                 row = ctk.CTkFrame(self.feed_container, fg_color="#F8F9FA", corner_radius=8)
                 row.pack(fill="x", pady=3, padx=2)
                 ctk.CTkFrame(row, width=6, height=6, corner_radius=3, fg_color=e.get('color', G_BLUE)).pack(side="left", padx=10)
-                ctk.CTkLabel(row, text=f"{e['bid']}: {e['event']}", font=("Arial", 11), text_color="black").pack(side="left", pady=8)
-
+                ctk.CTkLabel(row, text=f"{e.get('bid', '??')}: {e.get('event', 'Action')}", font=("Arial", 11), text_color="black").pack(side="left", pady=8)
         except Exception as e:
-            print(f"Refresh Error: {e}")
+            print(f"Activity Feed Error: {e}")
+
 
     def _render_fault_anatomy(self, insights):
         for w in self.bars_container.winfo_children(): w.destroy()

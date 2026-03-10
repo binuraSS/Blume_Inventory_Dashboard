@@ -2,37 +2,59 @@ from datetime import datetime
 from .client import inventory_sheet, fault_sheet, repair_sheet, safe_get_records
 from collections import Counter
 
+from datetime import datetime
+from .client import inventory_sheet, fault_sheet, safe_get_records
+
 def get_fleet_stats():
-    """Calculates the top-level numbers for Pulse cards."""
     try:
         inventory = safe_get_records(inventory_sheet)
         active_faults = safe_get_records(fault_sheet)
-        
-        broken_ids = {str(f.get('Blume ID')) for f in active_faults}
+
+        broken_ids = {str(f.get('Blume ID')).strip() for f in active_faults}
+
         overdue_count = 0
         healthy_count = 0
-        today = datetime.now()
+
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        MAINTENANCE_LIMIT = 30
 
         for item in inventory:
-            bid = str(item.get('Blume ID'))
-            if bid in broken_ids: continue
-            
-            last_service_str = item.get('Last Service', '')
+            clean_item = {str(k).strip().lower(): v for k, v in item.items()}
+            bid = str(clean_item.get('blume id', '')).strip()
+
+            if not bid or bid.lower() == "none" or bid in broken_ids:
+                continue
+
+            date_str = clean_item.get('last service') or clean_item.get('originated date')
+            print(f"DEVICE {bid} | DATE FOUND: {date_str}")
+
+            if not date_str or str(date_str).strip().lower() == "none":
+                overdue_count += 1
+                continue
+
             try:
-                last_date = datetime.strptime(last_service_str, "%Y-%m-%d")
-                if (today - last_date).days >= 180:
+                date_val = str(date_str).strip().replace("/", "-").split(" ")[0]
+                last_date = datetime.strptime(date_val, "%Y-%m-%d")
+                days_since = (today - last_date).days
+
+                if days_since >= MAINTENANCE_LIMIT:
                     overdue_count += 1
                 else:
                     healthy_count += 1
             except:
                 overdue_count += 1
 
-        return {"broken": len(active_faults), "overdue": overdue_count, "healthy": healthy_count}
-    except Exception as e:
-        print(f"Stats Error: {e}")
-        return {"broken": 0, "overdue": 0, "healthy": 0}
+        return {
+            "broken": len(broken_ids),
+            "overdue": overdue_count,
+            "healthy": healthy_count
+        }
 
-    
+    except Exception as e:
+        print(f"Stats Calculation Error: {e}")
+        return {"broken": 0, "overdue": 0, "healthy": 0}
+        
+
 def get_system_insights():
     """Returns a list of (Issue Type, Count) for the visual bars."""
     try:

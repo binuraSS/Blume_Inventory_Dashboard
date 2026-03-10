@@ -1,6 +1,7 @@
 # Ensure these class names match exactly what is in your views/__init__.py
 import customtkinter as ctk
-from views import AddDeviceView, FaultReportView, SearchView, RepairView, DashboardView
+# 1. ADD RoutineCheckView to your imports
+from views import AddDeviceView, FaultReportView, SearchView, RepairView, DashboardView, RoutineCheckView
 from styles import *
 
 class BlumeApp(ctk.CTk):
@@ -8,7 +9,7 @@ class BlumeApp(ctk.CTk):
         super().__init__()
         
         self.title("Blume Management Console")
-        self.geometry("1150x850")
+        self.geometry("1200x850") # Slightly wider for the new table
         self.configure(fg_color=G_WINDOW_BG)
 
         # Layout Configuration
@@ -21,17 +22,21 @@ class BlumeApp(ctk.CTk):
 
         # Initialize and Stack Frames
         self.frames = {}
-        # We define which views need the 'show_msg' callback
-        views_needing_msg = (AddDeviceView, FaultReportView, RepairView, DashboardView)
         
-        for F in (DashboardView, SearchView, RepairView, FaultReportView, AddDeviceView):
+        # 2. UPDATE: Add RoutineCheckView to the lists
+        # We define which views need the 'show_msg' callback
+        views_needing_msg = (AddDeviceView, FaultReportView, RepairView, DashboardView, RoutineCheckView)
+        
+        # Add RoutineCheckView to the iteration tuple
+        all_views = (DashboardView, RoutineCheckView, SearchView, RepairView, FaultReportView, AddDeviceView)
+        
+        for F in all_views:
             if F in views_needing_msg:
                 frame = F(self.view_container, self.show_msg)
             else:
                 frame = F(self.view_container)
             
             self.frames[F.__name__] = frame
-            # FIXED: This line MUST be indented inside the 'for' loop
             frame.grid(row=0, column=0, sticky="nsew")
 
         # Start on the Overview
@@ -45,9 +50,10 @@ class BlumeApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="Blume", font=FONT_H1, text_color=G_BLUE).pack(pady=(50, 40))
 
         self.nav_btns = {}
-        # The second value in the tuple must match the Class Name exactly
+        # 3. UPDATE: Add the "Routine Check" option to the menu
         menu = [
             ("🔭 Overview", "DashboardView"),      
+            ("🗓️ Routine Check", "RoutineCheckView"), # New Tab
             ("🔍 Search & History", "SearchView"), 
             ("🛠️ Active Workshop", "RepairView"),  
             ("⚠️ Report Fault", "FaultReportView"),
@@ -74,7 +80,7 @@ class BlumeApp(ctk.CTk):
         self.snackbar.place_forget()
 
     def show_frame(self, name):
-        """Switches the visible frame and refreshes data if it's the Dashboard."""
+        """Switches the visible frame and refreshes data if it's the Dashboard or Routine Check."""
         if name not in self.frames:
             print(f"Error: Frame {name} not found!")
             return
@@ -85,11 +91,17 @@ class BlumeApp(ctk.CTk):
         # Bring the selected frame to the front
         self.frames[name].tkraise()
         
-        # CUSTOM ACTION: Refresh Dashboard stats every time we switch to it
+        # 4. UPDATE: Trigger refreshes for data-heavy views
         if name == "DashboardView":
             self.frames[name].refresh_data()
+        elif name == "RoutineCheckView":
+            self.frames[name].refresh() # Ensures the maintenance dates are fresh
 
-    def show_msg(self, text):
+    def show_msg(self, text, type="info"):
+        # We can color the snackbar based on success/error if you like
+        bg_color = "#059669" if type == "success" else G_TEXT
+        self.snackbar.configure(fg_color=bg_color)
+        
         self.snackbar_label.configure(text=text)
         self.snackbar.place(relx=0.5, rely=0.92, anchor="s")
         self.after(3000, self.snackbar.place_forget)
