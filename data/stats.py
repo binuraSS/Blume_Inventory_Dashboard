@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime
 from .client import inventory_sheet, fault_sheet, safe_get_records
 
+
 def get_fleet_stats():
     try:
         inventory = safe_get_records(inventory_sheet)
@@ -26,8 +27,7 @@ def get_fleet_stats():
                 continue
 
             date_str = clean_item.get('last service') or clean_item.get('originated date')
-            print(f"DEVICE {bid} | DATE FOUND: {date_str}")
-
+           
             if not date_str or str(date_str).strip().lower() == "none":
                 overdue_count += 1
                 continue
@@ -85,3 +85,99 @@ def get_recent_activity():
         return activity
     except:
         return []
+    
+def calculate_mttr():
+    try:
+        repairs = safe_get_records(repair_sheet)
+        if not repairs: return 0
+        
+        total_days = 0
+        completed_repairs = 0
+        
+        for r in repairs:
+            start_str = r.get('Date Logged')
+            end_str = r.get('Date Resolved')
+            
+            if start_str and end_str:
+                start = datetime.strptime(str(start_str).strip(), "%Y-%m-%d")
+                end = datetime.strptime(str(end_str).strip(), "%Y-%m-%d")
+                
+                # Difference in days
+                total_days += (end - start).days
+                completed_repairs += 1
+        
+        return round(total_days / completed_repairs, 1) if completed_repairs > 0 else 0
+    except:
+        return 0
+    
+def get_recurring_issues():
+    try:
+        # Get all historical repairs
+        repairs = safe_get_records(repair_sheet)
+        
+        # Extract only the Blume IDs
+        all_failed_ids = [str(r.get('Blume ID')).strip() for r in repairs if r.get('Blume ID')]
+        
+        # Count occurrences
+        counts = Counter(all_failed_ids)
+        
+        # Return only those that have failed 2 or more times
+        # Format: [("BL-024", 3), ("BL-010", 2)]
+        return [(bid, count) for bid, count in counts.most_common() if count >= 2]
+    except:
+        return []    
+    
+def get_reliability_metrics():
+    try:
+        open_faults = safe_get_records(fault_sheet)
+        resolved_repairs = safe_get_records(repair_sheet)
+        
+        total_seconds = 0
+        total_cases = 0
+        all_ids = []
+        now = datetime.now()
+
+        combined_list = open_faults + resolved_repairs
+
+        for entry in combined_list:
+            # Normalize keys to handle spaces or casing
+            clean_entry = {str(k).strip(): v for k, v in entry.items()}
+            
+            bid = str(clean_entry.get('Blume ID', '')).strip()
+            if not bid or bid.lower() == "none": continue
+            all_ids.append(bid)
+            
+            # Use YOUR actual headers: "Issue Date" and "Resolved Date"
+            start_str = clean_entry.get('Issue Date')
+            end_str = clean_entry.get('Resolved Date')
+            
+            if start_str:
+                try:
+                    # Parse the Issue Date
+                    start_dt = datetime.strptime(str(start_str).strip(), "%Y-%m-%d")
+                    
+                    # Check if it's resolved or still active
+                    if end_str and str(end_str).lower() != "none" and str(end_str).strip() != "":
+                        end_dt = datetime.strptime(str(end_str).strip(), "%Y-%m-%d")
+                        duration = end_dt - start_dt
+                    else:
+                        # Still an active fault
+                        duration = now - start_dt
+                    
+                    total_seconds += duration.total_seconds()
+                    total_cases += 1
+                except Exception as e:
+                    # This will catch if the date format in the sheet isn't YYYY-MM-DD
+                    print(f"ID: {bid} | Date Error: {e}")
+                    continue
+
+        avg_days = (total_seconds / total_cases) / 86400 if total_cases > 0 else 0
+        
+        # Recurring Issues
+        counts = Counter(all_ids)
+        lemons = [{"bid": bid, "count": count} for bid, count in counts.most_common(3) if count >= 2]
+
+        return {"mttr": round(avg_days, 1), "lemons": lemons}
+    except Exception as e:
+        print(f"Reliability Error: {e}")
+        return {"mttr": 0, "lemons": []}

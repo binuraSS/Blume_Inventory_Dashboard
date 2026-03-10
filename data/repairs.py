@@ -30,7 +30,7 @@ def report_fault(blume_id, status, notes):
     new_tid = get_next_ticket_id()
     issue_date = datetime.today().strftime("%Y-%m-%d")
     # Row format: Ticket ID, Blume ID, Date, Status, Notes, Progress Level
-    new_row = [new_tid, blume_id, issue_date, status, notes, "PENDING"]
+    new_row = [new_tid, blume_id, issue_date, status, notes, "Pending"]
     fault_sheet.append_row(new_row)
     return new_tid
 
@@ -42,7 +42,7 @@ def archive_resolved_ticket(ticket_id, tech_notes):
             if row[0] == ticket_id:
                 resolved_date = datetime.today().strftime("%Y-%m-%d")
                 # Structure: ID, BlumeID, StartDate, Status, Notes, Progress, TechNotes, EndDate
-                new_row = [row[0], row[1], row[2], row[3], row[4], "RESOLVED", tech_notes, resolved_date]
+                new_row = [row[0], row[1], row[2], row[3], row[4], "Resolved", tech_notes, resolved_date]
                 
                 repair_sheet.append_row(new_row)
                 fault_sheet.delete_rows(i + 1)
@@ -54,7 +54,7 @@ def archive_resolved_ticket(ticket_id, tech_notes):
         return False
     
 def update_ticket_status(ticket_id, new_status):
-    """Moves a ticket status (e.g., from PENDING to IN PROGRESS)."""
+    """Moves a ticket status (e.g., from Pending to In Progress)."""
     try:
         records = safe_get_records(fault_sheet)
         for i, row in enumerate(records):
